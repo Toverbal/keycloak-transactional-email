@@ -61,6 +61,45 @@ All configuration is stored as realm attributes and managed via the REST API. Th
 
 ---
 
+## Supported Email Types
+
+| Template name                              | Trigger                          | Additional variables                                                                                        |
+| ------------------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `password-reset`                           | Forgot-password flow             | `link`, `linkExpiration`, `linkExpirationFormatted`                                                         |
+| `email-verification`                       | Registration / admin verify      | `link`, `linkExpiration`, `linkExpirationFormatted`                                                         |
+| `executeActions`                           | Admin-triggered required actions | `link`, `linkExpiration`, `linkExpirationFormatted`, `requiredActionsText`                                  |
+| `email-update-confirmation`                | User changes their email address | `link`, `linkExpiration`, `linkExpirationFormatted`, `newEmail`                                             |
+| `email-verification-with-code`             | OTP-style verification           | `code`                                                                                                      |
+| `identity-provider-link`                   | Account linking to IdP           | `link`, `linkExpiration`, `linkExpirationFormatted`, `identityProviderDisplayName`, `identityProviderAlias` |
+| `org-invite`                               | Organization invitation          | `link`, `linkExpiration`, `linkExpirationFormatted`, `organizationName`, `firstName`, `lastName`            |
+| `event-login_error`                        | Failed login notification        | `eventDate`, `eventIpAddress`                                                                               |
+| `event-update_password`                    | Password changed notification    | `eventDate`, `eventIpAddress`                                                                               |
+| `event-remove_totp`                        | TOTP device removed              | `eventDate`, `eventIpAddress`                                                                               |
+| `event-update_totp`                        | TOTP device updated              | `eventDate`, `eventIpAddress`                                                                               |
+| `event-remove_credential`                  | Credential removed               | `eventDate`, `eventIpAddress`, `credentialType`                                                             |
+| `event-update_credential`                  | Credential updated               | `eventDate`, `eventIpAddress`, `credentialType`                                                             |
+| `event-user_disabled_by_temporary_lockout` | Temporary lockout                | `eventDate`, `eventIpAddress`                                                                               |
+| `event-user_disabled_by_permanent_lockout` | Permanent lockout                | `eventDate`, `eventIpAddress`                                                                               |
+
+Email types not listed here (e.g. `email-test` / SMTP test) are not routed and always use FreeMarker.
+
+### Third-party extension emails
+
+Emails sent by other Phase Two extensions (e.g. [keycloak-magic-link](https://github.com/p2-inc/keycloak-magic-link)'s `magic-link-email`, [keycloak-orgs](https://github.com/p2-inc/keycloak-orgs)' `invitation-email`) are also intercepted. Add a template mapping using the FTL name without the `.ftl` suffix:
+
+```json
+{
+  "templates": {
+    "magic-link-email": "d-your-magic-link-template-id",
+    "invitation-email": "d-your-invite-template-id"
+  }
+}
+```
+
+String and numeric values from the extension's template attributes are forwarded as dynamic template data. Complex objects are filtered out.
+
+---
+
 ## REST API
 
 Base path: `/realms/{realm}/ext-email-template`
@@ -69,7 +108,7 @@ Requires a valid admin Bearer token. GET endpoints need `view-realm`; PUT/DELETE
 
 ### `GET /config`
 
-Returns the current configuration. Sensitive values (API keys) are masked as `**secret**`.
+Returns the current configuration. Sensitive values (API keys) are masked as `**secret**`. Returns **404** if no configuration has been set on the realm yet.
 
 ```bash
 curl "$KC/realms/myrealm/ext-email-template/config" \
@@ -91,7 +130,7 @@ curl "$KC/realms/myrealm/ext-email-template/config" \
 
 ### `PUT /config`
 
-Saves configuration. Values equal to `**secret**` are silently ignored, so a round-tripped GET response can be PUT back without clearing stored API keys.
+Saves configuration. Values equal to `**secret**` are silently ignored, so a round-tripped GET response can be PUT back without clearing stored API keys. Returns **400** if `provider` is set to a value that doesn't match any registered provider.
 
 ```bash
 curl -X PUT "$KC/realms/myrealm/ext-email-template/config" \
@@ -135,12 +174,12 @@ curl "$KC/realms/myrealm/ext-email-template/templates" \
   {
     "name": "password-reset",
     "description": "Password reset email sent from the forgot-password flow",
-    "variables": ["link", "linkExpiration"]
+    "variables": ["link", "linkExpiration", "linkExpirationFormatted"]
   },
   {
     "name": "email-verification",
     "description": "Email address verification during registration or by admin request",
-    "variables": ["link", "linkExpiration"]
+    "variables": ["link", "linkExpiration", "linkExpirationFormatted"]
   },
   ...
 ]
@@ -157,30 +196,6 @@ Every template also receives these variables regardless of type:
 | `userFirstName` | User first name                            |
 | `userLastName`  | User last name                             |
 | `username`      | Keycloak username                          |
-
----
-
-## Supported Email Types
-
-| Template name                              | Trigger                          | Additional variables                                                             |
-| ------------------------------------------ | -------------------------------- | -------------------------------------------------------------------------------- |
-| `password-reset`                           | Forgot-password flow             | `link`, `linkExpiration`                                                         |
-| `email-verification`                       | Registration / admin verify      | `link`, `linkExpiration`                                                         |
-| `executeActions`                           | Admin-triggered required actions | `link`, `linkExpiration`, `requiredActionsText`                                  |
-| `email-update-confirmation`                | User changes their email address | `link`, `linkExpiration`, `newEmail`                                             |
-| `email-verification-with-code`             | OTP-style verification           | `code`                                                                           |
-| `identity-provider-link`                   | Account linking to IdP           | `link`, `linkExpiration`, `identityProviderDisplayName`, `identityProviderAlias` |
-| `org-invite`                               | Organization invitation          | `link`, `linkExpiration`, `organizationName`, `firstName`, `lastName`            |
-| `event-login_error`                        | Failed login notification        | `eventDate`, `eventIpAddress`                                                    |
-| `event-update_password`                    | Password changed notification    | `eventDate`, `eventIpAddress`                                                    |
-| `event-remove_totp`                        | TOTP device removed              | `eventDate`, `eventIpAddress`                                                    |
-| `event-update_totp`                        | TOTP device updated              | `eventDate`, `eventIpAddress`                                                    |
-| `event-remove_credential`                  | Credential removed               | `eventDate`, `eventIpAddress`, `credentialType`                                  |
-| `event-update_credential`                  | Credential updated               | `eventDate`, `eventIpAddress`, `credentialType`                                  |
-| `event-user_disabled_by_temporary_lockout` | Temporary lockout                | `eventDate`, `eventIpAddress`                                                    |
-| `event-user_disabled_by_permanent_lockout` | Permanent lockout                | `eventDate`, `eventIpAddress`                                                    |
-
-Email types not listed here (e.g. `email-test` / SMTP test) are not routed and always use FreeMarker.
 
 ---
 
@@ -308,12 +323,10 @@ make dev        # build JAR, start Keycloak + Mailhog in the foreground
 make start      # same but detached (background), prints service URLs
 ```
 
-| Service                | URL                              | Credentials   |
-| ---------------------- | -------------------------------- | ------------- |
-| Keycloak admin UI      | http://localhost:8080/auth/admin | admin / admin |
-| Mailhog (catches SMTP) | http://localhost:8025            | —             |
-
-Remote debug port is also exposed on `8787` if you need to attach a debugger.
+| Service                | URL                         | Credentials   |
+| ---------------------- | --------------------------- | ------------- |
+| Keycloak admin UI      | http://localhost:8080/admin | admin / admin |
+| Mailhog (catches SMTP) | http://localhost:8025       | —             |
 
 ### Try it end to end
 
@@ -328,17 +341,17 @@ Get an admin token, then call the extension's config endpoint. The example below
 ```bash
 # Obtain an admin token
 TOKEN=$(curl -s -X POST \
-  "http://localhost:8080/auth/realms/master/protocol/openid-connect/token" \
+  "http://localhost:8080/realms/master/protocol/openid-connect/token" \
   -d "client_id=admin-cli&grant_type=password&username=admin&password=admin" \
   | python3 -m json.tool | grep access_token | cut -d'"' -f4)
 
 # See what template types are available and what variables each one exposes
-curl -s "http://localhost:8080/auth/realms/master/ext-email-template/templates" \
+curl -s "http://localhost:8080/realms/master/ext-email-template/templates" \
   -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 
 # Write configuration
 curl -s -X PUT \
-  "http://localhost:8080/auth/realms/master/ext-email-template/config" \
+  "http://localhost:8080/realms/master/ext-email-template/config" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -352,7 +365,7 @@ curl -s -X PUT \
   }'
 
 # Read it back (API key will be masked as **secret**)
-curl -s "http://localhost:8080/auth/realms/master/ext-email-template/config" \
+curl -s "http://localhost:8080/realms/master/ext-email-template/config" \
   -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 ```
 
@@ -370,7 +383,7 @@ You can override the SendGrid API URL to point at any HTTP server you control �
 ```bash
 # Using a free public request inspector (replace with your bin URL)
 curl -s -X PUT \
-  "http://localhost:8080/auth/realms/master/ext-email-template/config" \
+  "http://localhost:8080/realms/master/ext-email-template/config" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -389,7 +402,7 @@ The full JSON payload (including `template_id` and `dynamic_template_data`) will
 
 ```bash
 curl -s -X DELETE \
-  "http://localhost:8080/auth/realms/master/ext-email-template/config" \
+  "http://localhost:8080/realms/master/ext-email-template/config" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -397,10 +410,10 @@ After deletion all email types fall back to FreeMarker + SMTP (Mailhog).
 
 ### Pinning the Keycloak image version
 
-The compose file uses `latest` by default. To pin to a specific version:
+The compose file pins to a specific version by default. To override it:
 
 ```bash
-KEYCLOAK_IMAGE_TAG=26.0.5 make start
+KEYCLOAK_IMAGE_TAG=26.5.7 make start
 ```
 
 ### Other make targets

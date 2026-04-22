@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email.model;
+package io.phasetwo.keycloak.email.representation;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Map;

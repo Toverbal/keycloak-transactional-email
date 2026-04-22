@@ -1,7 +1,8 @@
 package io.phasetwo.keycloak.email.resource;
 
-import io.phasetwo.keycloak.email.model.TemplateInfo;
-import io.phasetwo.keycloak.email.model.TransactionalEmailConfig;
+import io.phasetwo.keycloak.email.representation.TemplateInfo;
+import io.phasetwo.keycloak.email.representation.TransactionalEmailConfig;
+import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
 import io.phasetwo.keycloak.email.template.KnownEmailTemplate;
 import io.phasetwo.keycloak.email.template.TransactionalEmailTemplateProvider;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,9 +12,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotNull;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -63,6 +66,7 @@ public class TransactionalEmailResource extends AbstractAdminResource {
       content = @Content(schema = @Schema(implementation = TransactionalEmailConfig.class)))
   @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer token")
   @ApiResponse(responseCode = "403", description = "Insufficient permissions (requires view-realm)")
+  @ApiResponse(responseCode = "404", description = "No transactional email configuration exists for this realm")
   @GET
   @Path("config")
   @Produces(MediaType.APPLICATION_JSON)
@@ -70,6 +74,7 @@ public class TransactionalEmailResource extends AbstractAdminResource {
     permissions.realm().requireViewRealm();
 
     String provider = realm.getAttribute(TransactionalEmailTemplateProvider.PROVIDER_KEY);
+    if (provider == null) throw new NotFoundException("No transactional email configuration found");
 
     Map<String, String> templates = new HashMap<>();
     Map<String, String> providerConfig = new HashMap<>();
@@ -121,6 +126,12 @@ public class TransactionalEmailResource extends AbstractAdminResource {
   @Consumes(MediaType.APPLICATION_JSON)
   public Response putConfig(@NotNull TransactionalEmailConfig config) {
     permissions.realm().requireManageRealm();
+
+    if (config.getProvider() != null && !config.getProvider().isBlank()) {
+      if (session.getProvider(TransactionalEmailProvider.class, config.getProvider()) == null) {
+        throw new BadRequestException("Unknown provider: " + config.getProvider());
+      }
+    }
 
     realm.setAttribute(
         TransactionalEmailTemplateProvider.PROVIDER_KEY,

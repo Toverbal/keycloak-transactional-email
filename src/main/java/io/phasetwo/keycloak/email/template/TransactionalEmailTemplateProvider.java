@@ -2,6 +2,7 @@ package io.phasetwo.keycloak.email.template;
 
 import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -161,6 +162,31 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       sendViaProvider(templateId.get(), vars, null);
     } else {
       super.sendEvent(event);
+    }
+  }
+
+  @Override
+  public void send(
+      String subjectKey,
+      List<Object> subjectAttributes,
+      String template,
+      Map<String, Object> bodyAttributes)
+      throws EmailException {
+    // Strip .ftl suffix if present — template names in realm config are stored without it
+    String templateName = template.endsWith(".ftl") ? template.substring(0, template.length() - 4) : template;
+    Optional<String> templateId = getTemplateId(templateName);
+    if (templateId.isPresent()) {
+      Map<String, Object> vars = baseVariables();
+      if (bodyAttributes != null) {
+        bodyAttributes.forEach((k, v) -> {
+          if (v instanceof String || v instanceof Number || v instanceof Boolean) {
+            vars.put(k, v);
+          }
+        });
+      }
+      sendViaProvider(templateId.get(), vars, null);
+    } else {
+      super.send(subjectKey, subjectAttributes, template, bodyAttributes);
     }
   }
 

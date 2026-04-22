@@ -30,10 +30,10 @@ EmailTemplateProvider SPI (Keycloak)
 | Class | Role |
 |---|---|
 | `TransactionalEmailTemplateProviderFactory` | Registered with Keycloak's `EmailTemplateSpi`, `order=1` beats the default FreeMarker provider |
-| `TransactionalEmailTemplateProvider` | Extends `FreeMarkerEmailTemplateProvider`; overrides each `send*()` method |
+| `TransactionalEmailTemplateProvider` | Extends `FreeMarkerEmailTemplateProvider`; overrides each typed `send*()` method plus the generic `send()` for third-party extension support |
 | `TransactionalEmailSpi` | Registers the custom `transactional-email` SPI so Keycloak can discover provider factories |
 | `SendGridEmailProviderFactory` | `@AutoService(TransactionalEmailProviderFactory.class)`, id=`"sendgrid"` |
-| `SendGridEmailProvider` | HTTP call to SendGrid v3 using `java.net.http.HttpClient` (no extra deps needed) |
+| `SendGridEmailProvider` | HTTP call to SendGrid v3 using Keycloak's `SimpleHttp` (`org.keycloak.broker.provider.util`) |
 | `TransactionalEmailResourceProviderFactory` | REST resource factory, id=`"ext-email-template"` |
 | `TransactionalEmailResource` | JAX-RS resource at `/realms/{realm}/ext-email-template` |
 | `KnownEmailTemplate` | Enum of all Keycloak email types + their available variables; drives the `/templates` endpoint |
@@ -80,10 +80,10 @@ All endpoints require a valid Bearer token. GET requires `view-realm`; PUT/DELET
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/config` | Return current config; sensitive values masked |
-| `PUT` | `/config` | Save config; values equal to `**secret**` are not overwritten |
+| `GET` | `/config` | Return current config; sensitive values masked. Returns **404** if no config has been set. |
+| `PUT` | `/config` | Save config; values equal to `**secret**` are not overwritten. Returns **400** if `provider` is set to an unknown provider ID. |
 | `DELETE` | `/config` | Remove all `_providerConfig.ext-email-template.*` attributes |
-| `GET` | `/templates` | List all known Keycloak email types with their available variables |
+| `GET` | `/templates` | List Keycloak built-in email types with their available variables |
 
 ## Template Variables
 
@@ -97,6 +97,20 @@ Notable special cases:
 - `sendSmtpTestEmail` is intentionally **not** overridden — it tests SMTP connectivity directly
 - `email-verification-with-code` provides a `code` variable instead of a `link`
 - Event templates (`event-*`) receive `eventDate`, `eventIpAddress`, plus all event detail key/values
+
+### Third-party extension support
+
+The generic `send(subjectKey, subjectAttributes, template, bodyAttributes)` from
+`FreeMarkerEmailTemplateProvider` is also overridden. This means emails sent by other Phase Two
+extensions (e.g. magic-link's `magic-link-email`, keycloak-orgs' `invitation-email`) are
+automatically routed through the transactional provider if a matching template mapping is configured.
+String, numeric, and boolean values from `bodyAttributes` are forwarded as template data; complex
+objects (e.g. `ProfileBean`) are filtered out.
+
+To route a magic-link email:
+```json
+{ "templates": { "magic-link-email": "d-your-template-id" } }
+```
 - All templates with a `link` also receive `linkExpirationFormatted` — a pre-formatted human-readable
   string (e.g. `"30 minutes"`, `"2 hours"`) derived from the raw `linkExpiration` minutes value.
   Use `{{linkExpirationFormatted}}` in templates rather than formatting the raw number yourself.
@@ -117,6 +131,9 @@ templates. Also note variable names must match exactly — `{{realmName}}` not `
 - `_providerConfig.ext-email-template.*` realm attribute namespace
 - `AbstractAdminResource` + `BaseRealmResourceProvider` + `CorsResource` pattern (copied from
   keycloak-magic-link) for admin REST resources
+- `representation` package for JAX-RS DTO classes (consistent with keycloak-orgs, keycloak-events,
+  keycloak-magic-link) — not `model`
+- `SimpleHttp` (`org.keycloak.broker.provider.util.SimpleHttp`) for outbound HTTP, not `java.net.http`
 - `quay.io/phasetwo/keycloak-crdb:{version}` container image in integration tests
 - `testcontainers-keycloak` + REST-Assured for integration test harness
 

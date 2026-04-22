@@ -1,16 +1,12 @@
 package io.phasetwo.keycloak.email.provider.sendgrid;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
 import io.phasetwo.keycloak.email.template.TransactionalEmailTemplateProvider;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.jbosslog.JBossLog;
+import org.keycloak.broker.provider.util.SimpleHttp;
 import org.keycloak.models.KeycloakSession;
 
 /**
@@ -40,13 +36,9 @@ public class SendGridEmailProvider implements TransactionalEmailProvider {
       TransactionalEmailTemplateProvider.CONFIG_PREFIX + ".sendgrid.api-url";
 
   private final KeycloakSession session;
-  private final HttpClient httpClient;
-  private final ObjectMapper objectMapper;
 
   public SendGridEmailProvider(KeycloakSession session) {
     this.session = session;
-    this.httpClient = HttpClient.newHttpClient();
-    this.objectMapper = new ObjectMapper();
   }
 
   @Override
@@ -70,21 +62,15 @@ public class SendGridEmailProvider implements TransactionalEmailProvider {
       apiUrl = DEFAULT_API_URL;
     }
 
-    String body = objectMapper.writeValueAsString(buildPayload(templateId, templateData, toEmail, toName, fromEmail, fromName));
-
-    HttpRequest request =
-        HttpRequest.newBuilder()
-            .uri(URI.create(apiUrl))
+    SimpleHttp.Response response =
+        SimpleHttp.doPost(apiUrl, session)
             .header("Authorization", "Bearer " + apiKey)
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body))
-            .build();
+            .json(buildPayload(templateId, templateData, toEmail, toName, fromEmail, fromName))
+            .asResponse();
 
-    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-    if (response.statusCode() < 200 || response.statusCode() >= 300) {
-      throw new RuntimeException(
-          "SendGrid API error " + response.statusCode() + ": " + response.body());
+    int status = response.getStatus();
+    if (status < 200 || status >= 300) {
+      throw new RuntimeException("SendGrid API error " + status + ": " + response.asString());
     }
 
     log.debugf("SendGrid accepted email to %s via template %s", toEmail, templateId);

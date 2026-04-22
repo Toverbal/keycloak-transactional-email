@@ -4,8 +4,8 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-import io.phasetwo.keycloak.email.model.TemplateInfo;
-import io.phasetwo.keycloak.email.model.TransactionalEmailConfig;
+import io.phasetwo.keycloak.email.representation.TemplateInfo;
+import io.phasetwo.keycloak.email.representation.TransactionalEmailConfig;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,6 +1,6 @@
 package io.phasetwo.keycloak.email.template;
 
-import io.phasetwo.keycloak.email.model.TemplateInfo;
+import io.phasetwo.keycloak.email.representation.TemplateInfo;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
