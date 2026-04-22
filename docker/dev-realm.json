@@ -1,0 +1,39 @@
+{
+  "realm": "dev",
+  "displayName": "Dev Realm",
+  "enabled": true,
+  "sslRequired": "none",
+  "smtpServer": {
+    "host": "mailhog",
+    "port": "1025",
+    "from": "phasetwo-test@phasetwo.io",
+    "fromDisplayName": "Phase Two Local Test",
+    "auth": "false",
+    "ssl": "false",
+    "starttls": "false"
+  },
+  "attributes": {
+    "_providerConfig.ext-email-template.provider": "sendgrid",
+    "_providerConfig.ext-email-template.template.email-verification": "d-replace-with-real-template-id",
+    "_providerConfig.ext-email-template.sendgrid.api-key": "123"
+  },
+  "users": [
+    {
+      "username": "testuser",
+      "email": "testuser@example.com",
+      "emailVerified": false,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User",
+      "requiredActions": ["VERIFY_EMAIL"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["default-roles-dev"]
+    }
+  ]
+}

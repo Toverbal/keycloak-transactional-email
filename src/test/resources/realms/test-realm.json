@@ -1,0 +1,12 @@
+{
+  "realm": "test",
+  "enabled": true,
+  "displayName": "Test Realm",
+  "registrationAllowed": false,
+  "smtpServer": {
+    "host": "localhost",
+    "port": "1025",
+    "from": "keycloak@example.com",
+    "fromDisplayName": "Keycloak Test"
+  }
+}

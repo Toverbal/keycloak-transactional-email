@@ -1,0 +1,33 @@
+openapi: 3.1.0
+info:
+  title: Keycloak Transactional Email
+  description: |
+    Routes Keycloak email sends to external transactional email providers (SendGrid, Brevo, Mailtrap, etc.)
+    using those providers' native dynamic template systems.
+
+    All endpoints require an admin Bearer token issued by the same realm.
+    GET endpoints require the `view-realm` role; PUT and DELETE require `manage-realm`.
+  version: "@project.version@"
+  contact:
+    name: Phase Two
+    url: https://phasetwo.io
+  license:
+    name: Elastic License v2
+    url: https://www.elastic.co/licensing/elastic-license
+servers:
+  - url: "{keycloakUrl}/realms/{realm}/ext-email-template"
+    variables:
+      keycloakUrl:
+        default: http://localhost:8080/auth
+        description: Base URL of the Keycloak server
+      realm:
+        default: master
+        description: Realm name
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

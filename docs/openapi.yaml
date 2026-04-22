@@ -1,0 +1,150 @@
+openapi: 3.0.1
+tags:
+- name: Transactional Email
+  description: Configure per-realm transactional email provider routing
+paths:
+  /config:
+    get:
+      tags:
+      - Transactional Email
+      summary: Get transactional email configuration
+      description: "Returns the current provider, template mappings, and provider-specific\
+        \ config. Sensitive values (API keys) are masked as \"**secret**\"."
+      operationId: getConfig
+      responses:
+        "200":
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionalEmailConfig'
+        "401":
+          description: Missing or invalid Bearer token
+        "403":
+          description: Insufficient permissions (requires view-realm)
+    put:
+      tags:
+      - Transactional Email
+      summary: Save transactional email configuration
+      description: "Stores provider, template mappings, and provider config as realm\
+        \ attributes. providerConfig values equal to \"**secret**\" are ignored to\
+        \ allow safe round-tripping. Set provider to empty string to disable transactional\
+        \ routing."
+      operationId: putConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionalEmailConfig'
+        required: true
+      responses:
+        "204":
+          description: Configuration saved
+        "400":
+          description: Invalid request body
+        "401":
+          description: Missing or invalid Bearer token
+        "403":
+          description: Insufficient permissions (requires manage-realm)
+    delete:
+      tags:
+      - Transactional Email
+      summary: Delete transactional email configuration
+      description: "Removes all _providerConfig.ext-email-template.* realm attributes,\
+        \ disabling transactional routing for all email types."
+      operationId: deleteConfig
+      responses:
+        "204":
+          description: Configuration deleted
+        "401":
+          description: Missing or invalid Bearer token
+        "403":
+          description: Insufficient permissions (requires manage-realm)
+  /templates:
+    get:
+      tags:
+      - Transactional Email
+      summary: List supported email types and their template variables
+      description: "Returns all Keycloak email types this extension supports, with\
+        \ the dynamic template variables available for each. Use this as a reference\
+        \ when designing templates in your provider's editor. All types also receive\
+        \ the universal base variables: realmName, userEmail, userFirstName, userLastName,\
+        \ username."
+      operationId: getTemplates
+      responses:
+        "200":
+          description: List of template metadata
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateInfo'
+        "401":
+          description: Missing or invalid Bearer token
+        "403":
+          description: Insufficient permissions (requires view-realm)
+components:
+  schemas:
+    TransactionalEmailConfig:
+      type: object
+      properties:
+        provider:
+          type: string
+          description: ID of the active TransactionalEmailProvider (e.g. 'sendgrid').
+            Empty or null disables transactional routing for all email types.
+          example: sendgrid
+        templates:
+          type: object
+          additionalProperties:
+            type: string
+            description: Maps Keycloak email-type names to provider-specific template
+              IDs. Only mapped types are routed externally; others fall back to FreeMarker
+              + SMTP.
+            example: "{\"password-reset\":\"d-abc123\",\"email-verification\":\"d-def456\"\
+              }"
+          description: Maps Keycloak email-type names to provider-specific template
+            IDs. Only mapped types are routed externally; others fall back to FreeMarker
+            + SMTP.
+          example:
+            password-reset: d-abc123
+            email-verification: d-def456
+        providerConfig:
+          type: object
+          additionalProperties:
+            type: string
+            description: "Provider-specific configuration keyed as '<providerId>.<key>'\
+              \ (e.g. 'sendgrid.api-key'). Sensitive values are masked as '**secret**'\
+              \ in GET responses; send the real value on PUT to update, or omit entirely\
+              \ to preserve the stored value."
+            example: "{\"sendgrid.api-key\":\"SG.your-key\"}"
+          description: "Provider-specific configuration keyed as '<providerId>.<key>'\
+            \ (e.g. 'sendgrid.api-key'). Sensitive values are masked as '**secret**'\
+            \ in GET responses; send the real value on PUT to update, or omit entirely\
+            \ to preserve the stored value."
+          example:
+            sendgrid.api-key: SG.your-key
+      description: Transactional email configuration for a realm
+    TemplateInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          description: "Keycloak email type name, used as the key in the templates\
+            \ map"
+          example: password-reset
+        description:
+          type: string
+          description: Human-readable description of when this email is sent
+        variables:
+          type: array
+          description: "Variables available to the dynamic template for this email\
+            \ type. Every type also receives the universal base variables (realmName,\
+            \ userEmail, etc.)"
+          items:
+            type: string
+            description: "Variables available to the dynamic template for this email\
+              \ type. Every type also receives the universal base variables (realmName,\
+              \ userEmail, etc.)"
+      description: Metadata about a Keycloak email type and the template variables
+        it exposes
