@@ -130,39 +130,54 @@ mvn verify -Pit     # integration tests require Docker
 The integration tests (`TransactionalEmailResourceTest`) start a real Keycloak container. The unit
 test (`SendGridEmailProviderTest`) uses an in-process JDK `HttpServer` mock — no container required.
 
-## Testing in a Standalone Container
-
-Until this extension is included in the Phase Two base image, deploy it manually:
+## Local Dev Environment
 
 ```bash
-mvn package -DskipTests
-cp target/keycloak-transactional-email-*.jar /path/to/keycloak/providers/
-# restart Keycloak
+make dev   # builds the JAR and starts docker compose
 ```
 
-Then configure via the REST API:
+On startup:
+- A `dev` realm is imported from `docker/dev-realm.json` with Mailhog SMTP pre-configured,
+  `sslRequired=none`, a `testuser` account, and placeholder SendGrid config already set.
+- A `keycloak-config` sidecar container runs once after Keycloak is healthy; it patches
+  the `master` realm (SMTP, sslRequired, admin email) and updates `testuser`'s email in `dev`.
+
+**Configure your email addresses** — copy `.env.example` or create `.env` at the repo root:
+```
+KEYCLOAK_ADMIN_EMAIL=you@example.com
+TEST_USER_EMAIL=you@example.com
+```
+These are gitignored. Docker Compose picks them up automatically.
+
+**Services:**
+- Admin UI: `http://localhost:8080/admin` (admin / admin)
+- Mailhog UI: `http://localhost:8025` — catches all SMTP fallback emails
+
+**Triggering a test email end-to-end:**
+1. Go to `http://localhost:8080/realms/dev/account` → Sign in → Forgot Password
+2. Enter `TEST_USER_EMAIL` — this fires `email-verification` through SendGrid
+3. Or use the Admin API: `PUT /admin/realms/dev/users/{id}/execute-actions-email` with `["VERIFY_EMAIL"]`
+
+**Updating the SendGrid template ID or API key** — edit `docker/dev-realm.json` attributes or
+call the config API directly after startup:
 ```bash
-TOKEN=$(curl -s -X POST "$KC/realms/master/protocol/openid-connect/token" \
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/master/protocol/openid-connect/token" \
   -d "client_id=admin-cli&grant_type=password&username=admin&password=admin" \
   | jq -r .access_token)
 
-# Set provider + SendGrid API key + template mappings
-curl -X PUT "$KC/realms/myrealm/ext-email-template/config" \
+curl -X PUT "http://localhost:8080/realms/dev/ext-email-template/config" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "provider": "sendgrid",
-    "templates": {
-      "password-reset": "d-your-template-id",
-      "email-verification": "d-another-template-id"
-    },
-    "providerConfig": {
-      "sendgrid.api-key": "SG.your-api-key"
-    }
+    "templates": { "email-verification": "d-your-real-template-id" },
+    "providerConfig": { "sendgrid.api-key": "SG.your-real-key" }
   }'
+```
 
-# Inspect what variables are available for each template type
-curl "$KC/realms/myrealm/ext-email-template/templates" \
+**Inspect available template variables:**
+```bash
+curl "http://localhost:8080/realms/dev/ext-email-template/templates" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
