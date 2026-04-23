@@ -3,7 +3,9 @@ package io.phasetwo.keycloak.email.provider.postmark;
 import com.google.auto.service.AutoService;
 import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
 import io.phasetwo.keycloak.email.spi.TransactionalEmailProviderFactory;
+import org.keycloak.Config;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.KeycloakSessionFactory;
 
 @AutoService(TransactionalEmailProviderFactory.class)
 public class PostmarkEmailProviderFactory implements TransactionalEmailProviderFactory {
@@ -14,6 +16,15 @@ public class PostmarkEmailProviderFactory implements TransactionalEmailProviderF
   public TransactionalEmailProvider create(KeycloakSession session) {
     return new PostmarkEmailProvider(session);
   }
+
+  @Override
+  public void init(Config.Scope config) {}
+
+  @Override
+  public void postInit(KeycloakSessionFactory factory) {}
+
+  @Override
+  public void close() {}
 
   @Override
   public String getId() {
