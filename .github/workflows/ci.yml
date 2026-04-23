@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - name: Setup Java 21
@@ -25,18 +24,14 @@ jobs:
       - name: Build with Maven
         run: mvn --batch-mode --update-snapshots verify
         env:
-          KEYCLOAK_TRANSACTIONAL_EMAIL: ${{ secrets.KEYCLOAK_TRANSACTIONAL_EMAIL }}
+          KEYCLOAK_TRANSACTIONAL_EMAIL: ${{ secrets.GITHUB_TOKEN }}
       - name: Add JaCoCo Coverage to Action Summary
         uses: jjmrocha/jacoco-summary@v1.1.1
         with:
           jacoco-csv-file: target/site/jacoco/jacoco.csv
-      - name: Add JaCoCo coverage to PR
-        id: jacoco
-        uses: vilmosnagy/jacoco-report@1.7.2-v2
+      - name: Upload JaCoCo report artifact
+        uses: actions/upload-artifact@v4
         with:
-          paths: |
-            target/site/jacoco/jacoco.xml
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: Code Coverage
-          update-comment: true
-          debug-mode: true
+          name: jacoco-report
+          path: target/site/jacoco/jacoco.xml
+          retention-days: 1
