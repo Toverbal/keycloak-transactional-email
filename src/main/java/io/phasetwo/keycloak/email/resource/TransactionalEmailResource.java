@@ -16,7 +16,6 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
-import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -71,10 +70,10 @@ public class TransactionalEmailResource extends AbstractAdminResource {
   @Path("config")
   @Produces(MediaType.APPLICATION_JSON)
   public TransactionalEmailConfig getConfig() {
+    setup();
     permissions.realm().requireViewRealm();
 
     String provider = realm.getAttribute(TransactionalEmailTemplateProvider.PROVIDER_KEY);
-    if (provider == null) throw new NotFoundException("No transactional email configuration found");
 
     Map<String, String> templates = new HashMap<>();
     Map<String, String> providerConfig = new HashMap<>();
@@ -125,6 +124,7 @@ public class TransactionalEmailResource extends AbstractAdminResource {
   @Path("config")
   @Consumes(MediaType.APPLICATION_JSON)
   public Response putConfig(@NotNull TransactionalEmailConfig config) {
+    setup();
     permissions.realm().requireManageRealm();
 
     if (config.getProvider() != null && !config.getProvider().isBlank()) {
@@ -174,6 +174,7 @@ public class TransactionalEmailResource extends AbstractAdminResource {
   @DELETE
   @Path("config")
   public Response deleteConfig() {
+    setup();
     permissions.realm().requireManageRealm();
 
     realm
@@ -204,6 +205,7 @@ public class TransactionalEmailResource extends AbstractAdminResource {
   @Path("templates")
   @Produces(MediaType.APPLICATION_JSON)
   public List<TemplateInfo> getTemplates() {
+    setup();
     permissions.realm().requireViewRealm();
     return KnownEmailTemplate.allTemplateInfos();
   }

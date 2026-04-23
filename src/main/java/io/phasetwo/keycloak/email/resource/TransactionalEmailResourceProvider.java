@@ -10,8 +10,6 @@ public class TransactionalEmailResourceProvider extends BaseRealmResourceProvide
 
   @Override
   protected Object getRealmResource() {
-    TransactionalEmailResource resource = new TransactionalEmailResource(session);
-    resource.setup();
-    return resource;
+    return new TransactionalEmailResource(session);
   }
 }
