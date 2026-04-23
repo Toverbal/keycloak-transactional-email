@@ -1,0 +1,42 @@
+name: CI Build
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build Project with Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: maven
+      - name: Build with Maven
+        run: mvn --batch-mode --update-snapshots verify
+        env:
+          KEYCLOAK_TRANSACTIONAL_EMAIL: ${{ secrets.KEYCLOAK_TRANSACTIONAL_EMAIL }}
+      - name: Add JaCoCo Coverage to Action Summary
+        uses: jjmrocha/jacoco-summary@v1.1.1
+        with:
+          jacoco-csv-file: target/site/jacoco/jacoco.csv
+      - name: Add JaCoCo coverage to PR
+        id: jacoco
+        uses: vilmosnagy/jacoco-report@1.7.2-v2
+        with:
+          paths: |
+            target/site/jacoco/jacoco.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: Code Coverage
+          update-comment: true
+          debug-mode: true
