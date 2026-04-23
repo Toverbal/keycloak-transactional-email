@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-import io.phasetwo.keycloak.email.provider.sendgrid.SendGridEmailProvider;
+import io.phasetwo.keycloak.email.provider.mailtrap.MailtrapEmailProvider;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -18,11 +18,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/**
- * Unit tests for {@link SendGridEmailProvider} using a lightweight in-process HTTP server to mock
- * the SendGrid API. No Keycloak container required.
- */
-class SendGridEmailProviderTest {
+class MailtrapEmailProviderTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -31,7 +27,7 @@ class SendGridEmailProviderTest {
   private final AtomicInteger requestCount = new AtomicInteger(0);
   private final AtomicReference<String> lastRequestBody = new AtomicReference<>();
   private final AtomicReference<String> lastAuthHeader = new AtomicReference<>();
-  private int responseStatus = 202;
+  private int responseStatus = 200;
 
   @BeforeEach
   void startMockServer() throws IOException {
@@ -56,23 +52,23 @@ class SendGridEmailProviderTest {
     requestCount.set(0);
     lastRequestBody.set(null);
     lastAuthHeader.set(null);
-    responseStatus = 202;
+    responseStatus = 200;
   }
 
-  private SendGridEmailProvider providerWithConfig(String apiKey) {
+  private MailtrapEmailProvider providerWithConfig(String apiToken) {
     MockKeycloakSession mock = new MockKeycloakSession();
-    mock.setAttribute(SendGridEmailProvider.CONFIG_API_KEY, apiKey);
+    mock.setAttribute(MailtrapEmailProvider.CONFIG_API_TOKEN, apiToken);
     mock.setAttribute(
-        SendGridEmailProvider.CONFIG_API_URL, "http://localhost:" + mockPort + "/v3/mail/send");
-    return new SendGridEmailProvider(mock.asSession());
+        MailtrapEmailProvider.CONFIG_API_URL, "http://localhost:" + mockPort + "/api/send");
+    return new MailtrapEmailProvider(mock.asSession());
   }
 
   @Test
-  void send_postsToSendGridWithCorrectPayload() throws Exception {
-    SendGridEmailProvider provider = providerWithConfig("SG.test-api-key");
+  void send_postsToMailtrapWithCorrectPayload() throws Exception {
+    MailtrapEmailProvider provider = providerWithConfig("mt-token");
 
     provider.send(
-        "d-template123",
+        "uuid-template-123",
         Map.of("link", "https://example.com/verify", "realmName", "My Realm"),
         "user@example.com",
         "Test User",
@@ -80,57 +76,58 @@ class SendGridEmailProviderTest {
         "Keycloak");
 
     assertThat(requestCount.get(), is(1));
-    assertThat(lastAuthHeader.get(), is("Bearer SG.test-api-key"));
+    assertThat(lastAuthHeader.get(), is("Bearer mt-token"));
 
     JsonNode payload = MAPPER.readTree(lastRequestBody.get());
-    assertThat(payload.get("template_id").asText(), is("d-template123"));
+    assertThat(payload.get("template_uuid").asText(), is("uuid-template-123"));
     assertThat(payload.get("from").get("email").asText(), is("from@example.com"));
     assertThat(payload.get("from").get("name").asText(), is("Keycloak"));
 
-    JsonNode personalization = payload.get("personalizations").get(0);
-    assertThat(personalization.get("to").get(0).get("email").asText(), is("user@example.com"));
-    assertThat(personalization.get("to").get(0).get("name").asText(), is("Test User"));
+    JsonNode toArray = payload.get("to");
+    assertThat(toArray.get(0).get("email").asText(), is("user@example.com"));
+    assertThat(toArray.get(0).get("name").asText(), is("Test User"));
 
-    JsonNode data = personalization.get("dynamic_template_data");
-    assertThat(data.get("link").asText(), is("https://example.com/verify"));
-    assertThat(data.get("realmName").asText(), is("My Realm"));
+    JsonNode vars = payload.get("template_variables");
+    assertThat(vars.get("link").asText(), is("https://example.com/verify"));
+    assertThat(vars.get("realmName").asText(), is("My Realm"));
   }
 
   @Test
-  void send_omitsFromNameWhenBlank() throws Exception {
-    SendGridEmailProvider provider = providerWithConfig("SG.key");
+  void send_omitsNamesAndVarsWhenBlank() throws Exception {
+    MailtrapEmailProvider provider = providerWithConfig("mt-token");
 
-    provider.send("d-t", Map.of(), "to@example.com", "", "from@example.com", "");
+    provider.send("uuid-123", Map.of(), "to@example.com", "", "from@example.com", "");
 
     JsonNode payload = MAPPER.readTree(lastRequestBody.get());
     assertThat(payload.get("from").has("name"), is(false));
-    assertThat(payload.get("personalizations").get(0).get("to").get(0).has("name"), is(false));
+    assertThat(payload.get("to").get(0).has("name"), is(false));
+    assertThat(payload.has("template_variables"), is(false));
   }
 
   @Test
-  void send_throwsWhenApiKeyMissing() {
+  void send_throwsWhenApiTokenMissing() {
     MockKeycloakSession mock = new MockKeycloakSession();
     mock.setAttribute(
-        SendGridEmailProvider.CONFIG_API_URL, "http://localhost:" + mockPort + "/v3/mail/send");
-    SendGridEmailProvider provider = new SendGridEmailProvider(mock.asSession());
+        MailtrapEmailProvider.CONFIG_API_URL, "http://localhost:" + mockPort + "/api/send");
+    MailtrapEmailProvider provider = new MailtrapEmailProvider(mock.asSession());
 
     assertThrows(
         IllegalStateException.class,
-        () -> provider.send("d-t", Map.of(), "to@example.com", "", "from@example.com", ""));
+        () -> provider.send("uuid", Map.of(), "to@example.com", "", "from@example.com", ""));
 
     assertThat(requestCount.get(), is(0));
   }
 
   @Test
   void send_throwsOnNon2xxResponse() {
-    responseStatus = 400;
-    SendGridEmailProvider provider = providerWithConfig("SG.key");
+    responseStatus = 500;
+    MailtrapEmailProvider provider = providerWithConfig("mt-token");
 
     RuntimeException ex =
         assertThrows(
             RuntimeException.class,
-            () -> provider.send("d-t", Map.of(), "to@example.com", "", "from@example.com", ""));
+            () -> provider.send("uuid", Map.of(), "to@example.com", "", "from@example.com", ""));
 
-    assertThat(ex.getMessage(), containsString("400"));
+    assertThat(ex.getMessage(), containsString("500"));
   }
 }

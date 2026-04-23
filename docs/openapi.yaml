@@ -22,6 +22,8 @@ paths:
           description: Missing or invalid Bearer token
         "403":
           description: Insufficient permissions (requires view-realm)
+        "404":
+          description: No transactional email configuration exists for this realm
     put:
       tags:
       - Transactional Email

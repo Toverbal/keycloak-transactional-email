@@ -201,23 +201,16 @@ Every template also receives these variables regardless of type:
 
 ## Providers
 
-### Available
-
-| Provider                                                                           | ID         | Dynamic template mechanism                                                                                                   | Config keys                            |
-| ---------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| [SendGrid](https://sendgrid.com/en-us/solutions/email-api/dynamic-email-templates) | `sendgrid` | [v3 Mail Send API](https://docs.sendgrid.com/api-reference/mail-send/mail-send) with `template_id` + `dynamic_template_data` | `sendgrid.api-key`, `sendgrid.api-url` |
-
-### Planned / good candidates to add
-
-| Provider                                                                           | Notes                                                                         |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [Brevo](https://www.brevo.com/products/transactional-email/) (formerly Sendinblue) | REST API, `templateId` + `params` JSON                                        |
-| [Mailtrap](https://mailtrap.io/email-sending/)                                     | REST API, `template_uuid` + `template_variables` — also useful as a dev inbox |
-| [Postmark](https://postmarkapp.com/transactional-email)                            | REST API, `TemplateId` + `TemplateModel` JSON                                 |
-| [Mailgun](https://www.mailgun.com/products/send/transactional-email/)              | REST API, template name + `h:X-Mailgun-Variables` JSON                        |
-| [AWS SES](https://aws.amazon.com/ses/)                                             | REST API, template name + `TemplateData` JSON; requires AWS SDK dependency    |
-| [Resend](https://resend.com)                                                       | REST API, React Email / HTML templates with variable substitution             |
-| [Customer.io](https://customer.io/transactional-api/)                              | REST API, `transactional_message_id` + `message_data` JSON                    |
+| Provider                                                                           | ID           | Dynamic template mechanism                                                                                                   | Config keys                                                                       | Tests | Reviewed |
+| ---------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----- | -------- |
+| [SendGrid](https://sendgrid.com/en-us/solutions/email-api/dynamic-email-templates) | `sendgrid`   | [v3 Mail Send API](https://docs.sendgrid.com/api-reference/mail-send/mail-send) with `template_id` + `dynamic_template_data` | `sendgrid.api-key`, `sendgrid.api-url`                                            | ✅    | ✅       |
+| [Brevo](https://www.brevo.com/products/transactional-email/) (formerly Sendinblue) | `brevo`      | REST API, numeric `templateId` + `params` JSON                                                                               | `brevo.api-key`, `brevo.api-url`                                                  | ✅    | -        |
+| [Postmark](https://postmarkapp.com/transactional-email)                            | `postmark`   | REST API, `TemplateId` (numeric) or `TemplateAlias` (string) + `TemplateModel` JSON                                          | `postmark.server-token`, `postmark.api-url`                                       | ✅    | -        |
+| [Mailtrap](https://mailtrap.io/email-sending/)                                     | `mailtrap`   | REST API, `template_uuid` + `template_variables` — also useful as a dev inbox                                                | `mailtrap.api-token`, `mailtrap.api-url`                                          | ✅    | -        |
+| [Mailgun](https://www.mailgun.com/products/send/transactional-email/)              | `mailgun`    | REST API (form-encoded), Handlebars template name + `t:variables` JSON                                                       | `mailgun.api-key`, `mailgun.domain`, `mailgun.api-url`                            | ✅    | -        |
+| [Customer.io](https://customer.io/transactional-api/)                              | `customerio` | REST API, `transactional_message_id` + `message_data` JSON; set `send_to_unsubscribed: true` for lifecycle emails            | `customerio.api-key`, `customerio.api-url`                                        | ✅    | -        |
+| [Resend](https://resend.com)                                                       | `resend`     | REST API; no server-side template rendering — `templateData` must supply pre-rendered `html` and `subject` keys              | `resend.api-key`, `resend.api-url`                                                | ✅    | -        |
+| [AWS SES](https://aws.amazon.com/ses/)                                             | `awsses`     | REST API v2, SES Handlebars template name (`TemplateName`) + `TemplateData` JSON; requests signed with AWS Signature V4      | `awsses.access-key-id`, `awsses.secret-access-key`, `awsses.region`, `awsses.api-url` | ✅    | -        |
 
 See [Adding a New Provider](#adding-a-new-provider) below for the two-class pattern to implement any of these.
 
