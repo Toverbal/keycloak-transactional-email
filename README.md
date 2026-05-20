@@ -172,6 +172,32 @@ See **[docs/development.md](docs/development.md)** for the Docker Compose setup,
 
 ---
 
+## Build & Release
+
+### CI
+
+Every push to `main` and every pull request runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml): builds with Maven, runs unit tests, and publishes a JaCoCo coverage report as a workflow artifact and Action summary.
+
+### Auto-release
+
+Every push to `main` also runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which uses [qcastel/github-actions-maven-release](https://github.com/qcastel/github-actions-maven-release) to:
+
+1. Strip `-SNAPSHOT` from the pom version (e.g. `0.1-SNAPSHOT` → `0.1`)
+2. Create a signed git tag (e.g. `v0.1`) — the `v` prefix comes from `io.phasetwo.keycloak:oss-parent`
+3. Push the tag back to the repo as `phasetwo-bot`
+4. Bump the pom to the next `-SNAPSHOT` minor version (`0.2-SNAPSHOT`) and commit with `[ci skip]` so this workflow doesn't recurse
+
+No artifacts are published — this extension isn't bundled in `quay.io/phasetwo/keycloak`; the tag is just for versioning and traceability. The build skips deploy via `-Dmaven.deploy.skip=true`.
+
+**Required org secrets** (already configured at the org level for `p2-inc`):
+
+- `SSH_PRIVATE_KEY` — deploy key for `phasetwo-bot` to push the tag and bump commit
+- `GPG_KEY` — armored secret key for signing the release tag (key id `BC6B4EADEB514AFD`)
+
+To skip the release on a particular push, include `[ci skip]` in the commit message.
+
+---
+
 ## Compatibility
 
 | Keycloak | Extension version |
