@@ -106,7 +106,7 @@
         <executions>
           <execution>
             <id>copy-openapi-spec</id>
-            <phase>compile</phase>
+            <phase>process-classes</phase>
             <goals>
               <goal>copy-resources</goal>
             </goals>
