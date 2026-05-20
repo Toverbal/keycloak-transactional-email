@@ -187,16 +187,7 @@ Every push to `main` also runs [`.github/workflows/release.yml`](.github/workflo
 3. Push the tag back to the repo as `phasetwo-bot`
 4. Bump the pom to the next `-SNAPSHOT` minor version (`0.2-SNAPSHOT`) and commit with `[ci skip]` so this workflow doesn't recurse
 
-No artifacts are published — this extension isn't bundled in `quay.io/phasetwo/keycloak`; the tag is just for versioning and traceability. The build skips deploy via `-Dmaven.deploy.skip=true`.
-
-**Required org secrets** (already configured at the org level for `p2-inc`):
-
-- `SSH_PRIVATE_KEY` — deploy key for `phasetwo-bot` to push the tag and bump commit
-- `GPG_KEY` — armored secret key for signing the release tag (key id `BC6B4EADEB514AFD`)
-
-To skip the release on a particular push, include `[ci skip]` in the commit message.
-
----
+## No artifacts are published — this extension isn't bundled in `quay.io/phasetwo/keycloak`; the tag is just for versioning and traceability. The build skips deploy via `-Dmaven.deploy.skip=true`.
 
 ## Compatibility
 
