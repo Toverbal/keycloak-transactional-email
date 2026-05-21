@@ -1,5 +1,7 @@
 # keycloak-transactional-email
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.phasetwo.keycloak/keycloak-transactional-email)](https://central.sonatype.com/artifact/io.phasetwo.keycloak/keycloak-transactional-email) [![CI Build](https://github.com/p2-inc/keycloak-transactional-email/actions/workflows/ci.yml/badge.svg)](https://github.com/p2-inc/keycloak-transactional-email/actions/workflows/ci.yml)
+
 A Keycloak extension that routes email sends to external transactional email providers — SendGrid, Brevo, Mailtrap, and others — using those providers' native **dynamic template** systems.
 
 Instead of rendering a FreeMarker template and delivering it over SMTP, this extension passes the raw variable data (links, expiration times, realm name, user details, etc.) directly to the provider's API.
