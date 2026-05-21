@@ -187,7 +187,7 @@ Every push to `main` also runs [`.github/workflows/release.yml`](.github/workflo
 3. Push the tag back to the repo as `phasetwo-bot`
 4. Bump the pom to the next `-SNAPSHOT` minor version (`0.2-SNAPSHOT`) and commit with `[ci skip]` so this workflow doesn't recurse
 
-## No artifacts are published — this extension isn't bundled in `quay.io/phasetwo/keycloak`; the tag is just for versioning and traceability. The build skips deploy via `-Dmaven.deploy.skip=true`.
+Released artifacts are published to [Maven Central](https://repo1.maven.org/maven2/io/phasetwo/keycloak/keycloak-transactional-email/).
 
 ## Compatibility
 
