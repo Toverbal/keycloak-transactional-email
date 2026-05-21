@@ -14,10 +14,6 @@ services:
       - /opt/keycloak/bin/kc.sh
       - start-dev
       - --import-realm
-      # Explicitly select our provider so it wins even if the image ships a
-      # higher-order EmailTemplateProvider. Our provider falls back to FreeMarker
-      # internally for any email type that has no template mapping configured.
-      - --spi-email-template-provider=transactional-email
       - --spi-theme-cache-themes=false
       - --log-level=INFO,io.phasetwo:DEBUG
     environment:
@@ -33,12 +29,13 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./target/keycloak-transactional-email-0.1-SNAPSHOT.jar:/opt/keycloak/providers/keycloak-transactional-email.jar
+      - ./target/keycloak-transactional-email.jar:/opt/keycloak/providers/keycloak-transactional-email.jar
       - ./docker/dev-realm.json:/opt/keycloak/data/import/dev-realm.json:ro
     depends_on:
       - mailhog
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health/ready || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -sf http://localhost:9000/health/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -82,5 +79,5 @@ services:
     image: mailhog/mailhog:v1.0.1
     platform: linux/amd64
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI — open http://localhost:8025 to inspect caught emails
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI — open http://localhost:8025 to inspect caught emails

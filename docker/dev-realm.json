@@ -25,7 +25,7 @@
       "enabled": true,
       "firstName": "Test",
       "lastName": "User",
-      "requiredActions": ["VERIFY_EMAIL"],
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",

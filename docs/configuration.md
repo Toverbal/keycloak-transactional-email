@@ -30,6 +30,32 @@ All configuration is stored as realm attributes. There are two ways to manage it
 | `_providerConfig.ext-email-template.awsses.region`            | AWS region (e.g. `us-east-1`)                                                                                                              |
 | `_providerConfig.ext-email-template.awsses.api-url`           | AWS SES API URL override                                                                                                                   |
 
+### Template names
+
+Substitute `<name>` in `_providerConfig.ext-email-template.template.<name>` with one of the following. Any name not listed here is not intercepted and falls back to Keycloak's standard FreeMarker + SMTP flow.
+
+| `<name>`                                   | Trigger                            |
+| ------------------------------------------ | ---------------------------------- |
+| `password-reset`                           | Forgot-password flow               |
+| `email-verification`                       | Registration / admin verify        |
+| `executeActions`                           | Admin-triggered required actions   |
+| `email-update-confirmation`                | User changes their email address   |
+| `email-verification-with-code`             | OTP-style verification             |
+| `identity-provider-link`                   | Account linking to IdP             |
+| `org-invite`                               | Organization invitation            |
+| `event-login_error`                        | Failed login notification          |
+| `event-update_password`                    | Password changed notification      |
+| `event-remove_totp`                        | TOTP device removed                |
+| `event-update_totp`                        | TOTP device updated                |
+| `event-remove_credential`                  | Credential removed                 |
+| `event-update_credential`                  | Credential updated                 |
+| `event-user_disabled_by_temporary_lockout` | Temporary lockout                  |
+| `event-user_disabled_by_permanent_lockout` | Permanent lockout                  |
+| `magic-link-email`                         | `keycloak-magic-link` extension    |
+| `invitation-email`                         | `keycloak-orgs` extension          |
+
+See [template-variables.md](template-variables.md) for the variables each template receives.
+
 ---
 
 ## Setting attributes via the Admin UI
