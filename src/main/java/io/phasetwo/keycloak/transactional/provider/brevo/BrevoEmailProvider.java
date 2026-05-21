@@ -1,7 +1,7 @@
-package io.phasetwo.keycloak.email.provider.brevo;
+package io.phasetwo.keycloak.transactional.provider.brevo;
 
-import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
-import io.phasetwo.keycloak.email.template.TransactionalEmailTemplateProvider;
+import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
+import io.phasetwo.keycloak.transactional.template.TransactionalEmailTemplateProvider;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email.resource;
+package io.phasetwo.keycloak.transactional.resource;
 
 import org.keycloak.models.KeycloakSession;
 

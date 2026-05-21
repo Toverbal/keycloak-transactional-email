@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email;
+package io.phasetwo.keycloak.transactional;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-import io.phasetwo.keycloak.email.provider.customerio.CustomerIoEmailProvider;
+import io.phasetwo.keycloak.transactional.provider.customerio.CustomerIoEmailProvider;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;

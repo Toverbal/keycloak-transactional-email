@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email.spi;
+package io.phasetwo.keycloak.transactional.spi;
 
 import com.google.auto.service.AutoService;
 import org.keycloak.provider.Provider;

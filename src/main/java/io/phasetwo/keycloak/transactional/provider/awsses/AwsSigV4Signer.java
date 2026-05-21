@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email.provider.awsses;
+package io.phasetwo.keycloak.transactional.provider.awsses;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

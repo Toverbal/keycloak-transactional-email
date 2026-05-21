@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email.resource;
+package io.phasetwo.keycloak.transactional.resource;
 
 import jakarta.ws.rs.OPTIONS;
 import jakarta.ws.rs.Path;

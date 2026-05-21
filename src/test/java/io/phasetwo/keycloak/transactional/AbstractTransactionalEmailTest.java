@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email;
+package io.phasetwo.keycloak.transactional;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.MatcherAssert.assertThat;

@@ -1,7 +1,7 @@
-package io.phasetwo.keycloak.email.provider.resend;
+package io.phasetwo.keycloak.transactional.provider.resend;
 
-import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
-import io.phasetwo.keycloak.email.template.TransactionalEmailTemplateProvider;
+import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
+import io.phasetwo.keycloak.transactional.template.TransactionalEmailTemplateProvider;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

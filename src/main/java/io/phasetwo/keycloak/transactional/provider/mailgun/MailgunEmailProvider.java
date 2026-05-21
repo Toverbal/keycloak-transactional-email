@@ -1,8 +1,8 @@
-package io.phasetwo.keycloak.email.provider.mailgun;
+package io.phasetwo.keycloak.transactional.provider.mailgun;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
-import io.phasetwo.keycloak.email.template.TransactionalEmailTemplateProvider;
+import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
+import io.phasetwo.keycloak.transactional.template.TransactionalEmailTemplateProvider;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;

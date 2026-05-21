@@ -1,8 +1,8 @@
-package io.phasetwo.keycloak.email.provider.resend;
+package io.phasetwo.keycloak.transactional.provider.resend;
 
 import com.google.auto.service.AutoService;
-import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
-import io.phasetwo.keycloak.email.spi.TransactionalEmailProviderFactory;
+import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
+import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProviderFactory;
 import org.keycloak.Config;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;

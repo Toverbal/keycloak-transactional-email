@@ -1,10 +1,10 @@
-package io.phasetwo.keycloak.email.resource;
+package io.phasetwo.keycloak.transactional.resource;
 
-import io.phasetwo.keycloak.email.representation.TemplateInfo;
-import io.phasetwo.keycloak.email.representation.TransactionalEmailConfig;
-import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
-import io.phasetwo.keycloak.email.template.KnownEmailTemplate;
-import io.phasetwo.keycloak.email.template.TransactionalEmailTemplateProvider;
+import io.phasetwo.keycloak.transactional.representation.TemplateInfo;
+import io.phasetwo.keycloak.transactional.representation.TransactionalEmailConfig;
+import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
+import io.phasetwo.keycloak.transactional.template.KnownEmailTemplate;
+import io.phasetwo.keycloak.transactional.template.TransactionalEmailTemplateProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;

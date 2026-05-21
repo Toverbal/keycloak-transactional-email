@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email;
+package io.phasetwo.keycloak.transactional;
 
 import java.util.HashMap;
 import java.util.Map;

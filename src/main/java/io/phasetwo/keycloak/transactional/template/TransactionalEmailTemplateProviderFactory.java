@@ -1,4 +1,4 @@
-package io.phasetwo.keycloak.email.template;
+package io.phasetwo.keycloak.transactional.template;
 
 import com.google.auto.service.AutoService;
 import org.keycloak.Config;

@@ -1,8 +1,8 @@
-package io.phasetwo.keycloak.email.provider.awsses;
+package io.phasetwo.keycloak.transactional.provider.awsses;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
-import io.phasetwo.keycloak.email.template.TransactionalEmailTemplateProvider;
+import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
+import io.phasetwo.keycloak.transactional.template.TransactionalEmailTemplateProvider;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;

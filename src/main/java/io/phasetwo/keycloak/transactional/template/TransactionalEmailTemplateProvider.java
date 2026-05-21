@@ -1,6 +1,6 @@
-package io.phasetwo.keycloak.email.template;
+package io.phasetwo.keycloak.transactional.template;
 
-import io.phasetwo.keycloak.email.spi.TransactionalEmailProvider;
+import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -197,9 +197,17 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
   private Optional<String> getTemplateId(String templateName) {
     if (realm == null) return Optional.empty();
     String provider = realm.getAttribute(PROVIDER_KEY);
-    if (provider == null || provider.isBlank()) return Optional.empty();
+    if (provider == null || provider.isBlank()) {
+      log.debugf("No transactional provider configured for %s; falling back to FreeMarker", templateName);
+      return Optional.empty();
+    }
     String templateId = realm.getAttribute(TEMPLATE_KEY_PREFIX + templateName);
-    if (templateId == null || templateId.isBlank()) return Optional.empty();
+    if (templateId == null || templateId.isBlank()) {
+      log.debugf(
+          "No template mapping for %s under provider '%s'; falling back to FreeMarker",
+          templateName, provider);
+      return Optional.empty();
+    }
     return Optional.of(templateId);
   }
 
@@ -251,6 +259,10 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
     Map<String, String> smtpConfig = realm.getSmtpConfig();
     String fromEmail = smtpConfig.getOrDefault("from", "");
     String fromName = smtpConfig.getOrDefault("fromDisplayName", "");
+
+    log.infof(
+        "Sending email via transactional provider '%s' (templateId=%s, to=%s)",
+        realm.getAttribute(PROVIDER_KEY), templateId, toEmail);
 
     try {
       provider.send(templateId, vars, toEmail, toName, fromEmail, fromName);
