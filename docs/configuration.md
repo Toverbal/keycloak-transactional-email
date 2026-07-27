@@ -1,6 +1,6 @@
 # Configuration
 
-All configuration is stored as realm attributes. There are two ways to manage it: directly in the Keycloak Admin UI, or via the REST API.
+All configuration is stored as realm attributes, managed via this extension's REST API (see [Setting attributes](#setting-attributes) below).
 
 ---
 
@@ -58,28 +58,56 @@ See [template-variables.md](template-variables.md) for the variables each templa
 
 ---
 
-## Setting attributes via the Admin UI
+## Locale-specific templates
 
-You can configure the extension entirely through the Keycloak Admin Console without using the REST API.
+Each email type can have per-locale template overrides, tried before the locale-less mapping:
 
-1. Open the Admin Console and select your realm.
-2. Go to **Realm Settings** in the left navigation.
-3. Click the **Attributes** tab.
-4. Use **Add attribute** to create each key-value pair.
+```
+_providerConfig.ext-email-template.template.<name>.<locale>
+```
+
+For example, alongside a default `template.password-reset`, you can add:
+
+```
+_providerConfig.ext-email-template.template.password-reset.nl = d-nl-template-id
+_providerConfig.ext-email-template.template.password-reset.fr = d-fr-template-id
+```
+
+Locale resolution, most specific first:
+
+1. The recipient's own stored profile locale (`UserModel.LOCALE` attribute - the same one set by the account console's language switcher).
+2. The realm's configured default locale.
+3. The locale-less `template.<name>` key, if neither of the above has a mapping.
+4. Standard FreeMarker + SMTP, if even that is absent.
+
+Locale matching is case-insensitive (`nl` and `NL` are equivalent).
+
+This is intentionally **not** resolved via Keycloak's `LocaleSelectorProvider` (used for login-page/theme locale selection), because that also factors in the *current HTTP request's* cookie, `Accept-Language` header, and active authentication session. For sends triggered by the recipient's own browser (e.g. self-service forgot-password) that happens to line up with the recipient, but for admin-triggered sends (e.g. "Send verification email" in the Admin Console, or the `execute-actions-email` admin REST endpoint) it would reflect the *admin's* locale, not the recipient's - the opposite of what per-recipient routing needs. Reading the recipient's own stored attribute directly stays correct regardless of who or what triggered the send.
+
+---
+
+## Setting attributes
+
+Keycloak's Admin Console has no generic UI for editing arbitrary realm-level attributes like these ([keycloak/keycloak#17732](https://github.com/keycloak/keycloak/issues/17732)). Use this extension's own REST resource instead (see [REST API](#rest-api) below), or the underlying Keycloak Admin REST API directly (`PUT /admin/realms/{realm}` with an `attributes` map).
+
+Don't confuse this with **Realm Settings → User profile → Attributes**, which manages the *user profile schema* (`username`, `email`, `locale`, etc.) - that's an unrelated feature and won't show or edit any `_providerConfig.ext-email-template.*` values.
 
 ### Example: configure SendGrid for password reset
 
-Add these three attributes:
+```bash
+curl -X PUT "$KC/realms/myrealm/ext-email-template/config" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "sendgrid",
+    "templates": { "password-reset": "d-your-template-id" },
+    "providerConfig": { "sendgrid.api-key": "SG.your-api-key" }
+  }'
+```
 
-| Key                                                          | Value                |
-| ------------------------------------------------------------ | -------------------- |
-| `_providerConfig.ext-email-template.provider`                | `sendgrid`           |
-| `_providerConfig.ext-email-template.sendgrid.api-key`        | `SG.your-api-key`    |
-| `_providerConfig.ext-email-template.template.password-reset` | `d-your-template-id` |
+Repeat the `templates` entry for any additional email types you want to route, using the template names from the [template variables reference](template-variables.md).
 
-Repeat the last row for any additional email types you want to route, using the template names from the [template variables reference](template-variables.md).
-
-To disable the extension without removing individual template mappings, set the provider key to an empty value or delete it.
+To disable the extension without removing individual template mappings, set `provider` to an empty value or delete it.
 
 ---
 

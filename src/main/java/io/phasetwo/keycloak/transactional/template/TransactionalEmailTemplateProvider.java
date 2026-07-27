@@ -1,6 +1,7 @@
 package io.phasetwo.keycloak.transactional.template;
 
 import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import org.keycloak.email.freemarker.FreeMarkerEmailTemplateProvider;
 import org.keycloak.events.Event;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.OrganizationModel;
+import org.keycloak.models.UserModel;
 
 /**
  * Extends {@link FreeMarkerEmailTemplateProvider} to intercept email sends and route them to a
@@ -24,8 +26,11 @@ import org.keycloak.models.OrganizationModel;
  * <ul>
  *   <li>{@code _providerConfig.ext-email-template.provider} — the provider ID to use (e.g. {@code
  *       "sendgrid"})
- *   <li>{@code _providerConfig.ext-email-template.template.<name>} — the provider-specific
- *       template ID for a given Keycloak email type
+ *   <li>{@code _providerConfig.ext-email-template.template.<name>} — the provider-specific template
+ *       ID for a given Keycloak email type
+ *   <li>{@code _providerConfig.ext-email-template.template.<name>.<locale>} — an optional
+ *       locale-specific override, tried before the locale-less key above (see {@link
+ *       #getTemplateId(String)})
  * </ul>
  *
  * <p>If no provider is configured, or no template mapping exists for the current email type, the
@@ -37,7 +42,6 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
   public static final String CONFIG_PREFIX = "_providerConfig.ext-email-template";
   public static final String PROVIDER_KEY = CONFIG_PREFIX + ".provider";
   public static final String TEMPLATE_KEY_PREFIX = CONFIG_PREFIX + ".template.";
-
 
   public TransactionalEmailTemplateProvider(KeycloakSession session) {
     super(session);
@@ -194,6 +198,29 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
 
   // ---- helpers ----
 
+  /**
+   * Resolves the template ID for {@code templateName}, preferring a locale-specific mapping over
+   * the plain one. Locale suffixes are tried in order:
+   *
+   * <ol>
+   *   <li>the recipient's own stored profile locale ({@link UserModel#LOCALE} attribute - the same
+   *       one set by the account console's language switcher)
+   *   <li>the realm's configured default locale
+   * </ol>
+   *
+   * for keys of the form {@code <TEMPLATE_KEY_PREFIX><templateName>.<locale>}, before finally
+   * falling back to the locale-less {@code <TEMPLATE_KEY_PREFIX><templateName>} key. A missing or
+   * unmapped locale simply falls through to the next candidate, ending at the same FreeMarker
+   * fallback as before if nothing matches.
+   *
+   * <p>Deliberately does NOT use {@link org.keycloak.locale.LocaleSelectorProvider}: it also
+   * factors in the CURRENT HTTP request's locale cookie / Accept-Language header / auth session,
+   * which for admin-triggered sends (e.g. "Send verification email" in the admin console, or the
+   * {@code execute-actions-email} admin REST endpoint) reflects whoever is performing the action,
+   * not the recipient the email is actually going to - the opposite of what per-recipient template
+   * routing needs. Reading the recipient's own stored attribute directly is what stays correct
+   * regardless of who/what triggered the send.
+   */
   private Optional<String> getTemplateId(String templateName) {
     if (realm == null) return Optional.empty();
     String provider = realm.getAttribute(PROVIDER_KEY);
@@ -201,6 +228,15 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       log.debugf("No transactional provider configured for %s; falling back to FreeMarker", templateName);
       return Optional.empty();
     }
+
+    for (String locale : candidateLocales()) {
+      String localized = realm.getAttribute(TEMPLATE_KEY_PREFIX + templateName + "." + locale);
+      if (localized != null && !localized.isBlank()) {
+        log.debugf("Using locale '%s' template mapping for %s", locale, templateName);
+        return Optional.of(localized);
+      }
+    }
+
     String templateId = realm.getAttribute(TEMPLATE_KEY_PREFIX + templateName);
     if (templateId == null || templateId.isBlank()) {
       log.debugf(
@@ -209,6 +245,24 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       return Optional.empty();
     }
     return Optional.of(templateId);
+  }
+
+  private List<String> candidateLocales() {
+    List<String> locales = new ArrayList<>();
+    if (user != null) {
+      String userLocale = normalizeLocale(user.getFirstAttribute(UserModel.LOCALE));
+      if (userLocale != null) locales.add(userLocale);
+    }
+    if (realm != null) {
+      String realmDefault = normalizeLocale(realm.getDefaultLocale());
+      if (realmDefault != null && !locales.contains(realmDefault)) locales.add(realmDefault);
+    }
+    return locales;
+  }
+
+  private static String normalizeLocale(String locale) {
+    if (locale == null || locale.isBlank()) return null;
+    return locale.trim().toLowerCase(java.util.Locale.ROOT);
   }
 
   private TransactionalEmailProvider resolveProvider() {

@@ -64,6 +64,17 @@ _providerConfig.ext-email-template.template.<name>
     → e.g. _providerConfig.ext-email-template.template.password-reset = "d-abc123"
     → absent = this email type falls back to FreeMarker
 
+_providerConfig.ext-email-template.template.<name>.<locale>
+    → optional locale-specific override, tried before the locale-less key above
+    → e.g. _providerConfig.ext-email-template.template.password-reset.nl = "d-nl456"
+    → locale is resolved as: the recipient's own UserModel.LOCALE attribute (set e.g. by the
+      account console's language switcher), then the realm's default locale, in that order -
+      each candidate that has no matching mapping is skipped, falling through to the next one
+      and finally to the locale-less key
+    → deliberately NOT resolved via LocaleSelectorProvider (which also considers the CURRENT
+      request's cookie/Accept-Language/auth session) - for admin-triggered sends (e.g. "Send
+      verification email" in the admin console) that reflects the ADMIN, not the recipient
+
 _providerConfig.ext-email-template.sendgrid.api-key
     → SendGrid API key (sensitive; masked as "**secret**" in GET responses)
 

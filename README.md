@@ -48,7 +48,7 @@ cp target/keycloak-transactional-email-*.jar /opt/keycloak/providers/
 
 ## Configuration
 
-All configuration is stored as realm attributes. You can manage it through the Keycloak Admin UI or the REST API — see **[docs/configuration.md](docs/configuration.md)** for the full reference, including a step-by-step UI walkthrough.
+All configuration is stored as realm attributes, managed via this extension's REST API — see **[docs/configuration.md](docs/configuration.md)** for the full reference.
 
 Quick example via the REST API:
 
@@ -69,6 +69,8 @@ curl -X PUT "$KC/realms/myrealm/ext-email-template/config" \
 ```
 
 Set `provider` to `""` or `null` to disable transactional routing and revert to SMTP.
+
+Each email type also supports locale-specific template overrides (e.g. `password-reset.nl`), resolved from the recipient's own stored locale, falling back to the realm's default locale and then the locale-less mapping - see [docs/configuration.md#locale-specific-templates](docs/configuration.md#locale-specific-templates).
 
 ---
 
