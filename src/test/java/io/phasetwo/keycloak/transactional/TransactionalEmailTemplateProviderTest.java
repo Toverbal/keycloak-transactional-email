@@ -8,6 +8,8 @@ import io.phasetwo.keycloak.transactional.template.TransactionalEmailTemplatePro
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.keycloak.events.Event;
+import org.keycloak.events.EventType;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserModel;
 
@@ -21,9 +23,10 @@ class TransactionalEmailTemplateProviderTest {
   private static final String PROVIDER_KEY = "_providerConfig.ext-email-template.provider";
   private static final String TEMPLATE_PREFIX = "_providerConfig.ext-email-template.template.";
 
-  /** Records the templateId passed to send(), so tests can assert on routing decisions. */
+  /** Records the templateId and vars passed to send(), so tests can assert on routing decisions. */
   private static class RecordingProvider implements TransactionalEmailProvider {
     final AtomicReference<String> lastTemplateId = new AtomicReference<>();
+    final AtomicReference<Map<String, Object>> lastVars = new AtomicReference<>();
 
     @Override
     public void send(
@@ -34,6 +37,7 @@ class TransactionalEmailTemplateProviderTest {
         String fromEmail,
         String fromName) {
       lastTemplateId.set(templateId);
+      lastVars.set(templateData);
     }
 
     @Override
@@ -135,5 +139,113 @@ class TransactionalEmailTemplateProviderTest {
     }
 
     assertThat(recordingProvider.lastTemplateId.get(), is(nullValue()));
+  }
+
+  @Test
+  void sendEvent_populatesEventDateFormatted() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");
+    mock.setUserAttribute(UserModel.LOCALE, "en");
+
+    Event event = new Event();
+    event.setType(EventType.LOGIN_ERROR);
+    event.setTime(1710504000000L); // 2024-03-15T12:00:00Z
+    event.setIpAddress("203.0.113.5");
+
+    templateProvider.sendEvent(event);
+
+    Map<String, Object> vars = recordingProvider.lastVars.get();
+    assertThat(vars.get("eventDate"), is(1710504000000L));
+    assertThat(vars.get("eventDateFormatted"), instanceOf(String.class));
+    String formatted = (String) vars.get("eventDateFormatted");
+    assertThat(formatted.isBlank(), is(false));
+    // Proves it's a human-readable rendering, not the raw epoch value passed through as-is.
+    assertThat(formatted, not(is(String.valueOf(1710504000000L))));
+  }
+
+  @Test
+  void eventDateFormatted_reflectsRecipientLocale() throws Exception {
+    Event event = new Event();
+    event.setType(EventType.LOGIN_ERROR);
+    event.setTime(1710504000000L);
+
+    TransactionalEmailTemplateProvider enProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");
+    mock.setUserAttribute(UserModel.LOCALE, "en");
+    enProvider.sendEvent(event);
+    String enFormatted = (String) recordingProvider.lastVars.get().get("eventDateFormatted");
+
+    TransactionalEmailTemplateProvider nlProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+    nlProvider.sendEvent(event);
+    String nlFormatted = (String) recordingProvider.lastVars.get().get("eventDateFormatted");
+
+    assertThat(nlFormatted, not(is(enFormatted)));
+  }
+
+  @Test
+  void eventDateFormat_dmyPreset() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");
+    mock.setAttribute("_providerConfig.ext-email-template.event-date-format", "dmy");
+
+    Event event = new Event();
+    event.setType(EventType.LOGIN_ERROR);
+    event.setTime(1710504000000L); // 2024-03-15T12:00:00Z
+
+    templateProvider.sendEvent(event);
+
+    String formatted = (String) recordingProvider.lastVars.get().get("eventDateFormatted");
+    assertThat(formatted, matchesPattern("\\d{2}-\\d{2}-\\d{4} \\d{2}:\\d{2}"));
+  }
+
+  @Test
+  void eventDateFormat_ymdPreset() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");
+    mock.setAttribute("_providerConfig.ext-email-template.event-date-format", "YMD"); // case-insensitive
+
+    Event event = new Event();
+    event.setType(EventType.LOGIN_ERROR);
+    event.setTime(1710504000000L);
+
+    templateProvider.sendEvent(event);
+
+    String formatted = (String) recordingProvider.lastVars.get().get("eventDateFormatted");
+    assertThat(formatted, matchesPattern("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}"));
+  }
+
+  @Test
+  void eventDateFormat_customPattern() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");
+    mock.setAttribute("_providerConfig.ext-email-template.event-date-format", "yyyy/MM/dd");
+
+    Event event = new Event();
+    event.setType(EventType.LOGIN_ERROR);
+    event.setTime(1710504000000L);
+
+    templateProvider.sendEvent(event);
+
+    String formatted = (String) recordingProvider.lastVars.get().get("eventDateFormatted");
+    assertThat(formatted, matchesPattern("\\d{4}/\\d{2}/\\d{2}"));
+  }
+
+  @Test
+  void eventDateFormat_invalidPattern_fallsBackToLocaleAwareDefault() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");
+    mock.setAttribute("_providerConfig.ext-email-template.event-date-format", "not a valid pattern {{{");
+
+    Event event = new Event();
+    event.setType(EventType.LOGIN_ERROR);
+    event.setTime(1710504000000L);
+
+    templateProvider.sendEvent(event);
+
+    // Doesn't throw, and still produces a non-blank formatted string.
+    String formatted = (String) recordingProvider.lastVars.get().get("eventDateFormatted");
+    assertThat(formatted.isBlank(), is(false));
   }
 }

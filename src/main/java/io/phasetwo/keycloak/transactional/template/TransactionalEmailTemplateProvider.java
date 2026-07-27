@@ -1,6 +1,10 @@
 package io.phasetwo.keycloak.transactional.template;
 
 import io.phasetwo.keycloak.transactional.spi.TransactionalEmailProvider;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -42,6 +46,19 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
   public static final String CONFIG_PREFIX = "_providerConfig.ext-email-template";
   public static final String PROVIDER_KEY = CONFIG_PREFIX + ".provider";
   public static final String TEMPLATE_KEY_PREFIX = CONFIG_PREFIX + ".template.";
+  public static final String EVENT_DATE_FORMAT_KEY = CONFIG_PREFIX + ".event-date-format";
+
+  /**
+   * Named presets for {@link #EVENT_DATE_FORMAT_KEY}, as {@link java.time.format.DateTimeFormatter}
+   * patterns. Any configured value that isn't one of these (case-insensitive) or {@code "auto"} is
+   * treated as a literal {@code DateTimeFormatter} pattern instead, so fully custom formats are
+   * supported too - not just these three presets.
+   */
+  private static final Map<String, String> EVENT_DATE_FORMAT_PRESETS =
+      Map.of(
+          "dmy", "dd-MM-yyyy HH:mm",
+          "mdy", "MM/dd/yyyy hh:mm a",
+          "ymd", "yyyy-MM-dd HH:mm");
 
   public TransactionalEmailTemplateProvider(KeycloakSession session) {
     super(session);
@@ -158,6 +175,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
     if (templateId.isPresent()) {
       Map<String, Object> vars = baseVariables();
       vars.put("eventDate", event.getTime());
+      vars.put("eventDateFormatted", formatEventDate(event.getTime()));
       vars.put("eventIpAddress", event.getIpAddress());
       if (event.getDetails() != null) {
         vars.put("credentialType", event.getDetails().get("credential_type"));
@@ -288,6 +306,51 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       return hours + " " + (hours == 1 ? "hour" : "hours");
     }
     return minutes + " " + (minutes == 1 ? "minute" : "minutes");
+  }
+
+  /**
+   * Formats an event timestamp for display, using the same recipient-locale resolution as template
+   * routing ({@link #candidateLocales()}) so the date reads naturally for whoever receives the
+   * email, rather than exposing the raw millisecond epoch value ({@code eventDate}) that {@link
+   * Event#getTime()} returns. Falls back to English if neither the user nor the realm has a usable
+   * locale. Formatted in the server's local timezone - Keycloak does not store a per-user timezone.
+   *
+   * <p>The format itself is controlled by the {@link #EVENT_DATE_FORMAT_KEY} realm attribute:
+   *
+   * <ul>
+   *   <li>unset, blank, or {@code "auto"} - locale-aware default ({@link FormatStyle#MEDIUM})
+   *   <li>{@code "dmy"} / {@code "mdy"} / {@code "ymd"} - one of {@link #EVENT_DATE_FORMAT_PRESETS}
+   *   <li>anything else - used directly as a {@link DateTimeFormatter} pattern, so realms that need
+   *       something the presets don't cover can supply their own (e.g. {@code "EEEE d MMMM yyyy"}).
+   *       An invalid pattern falls back to the locale-aware default rather than failing the send.
+   * </ul>
+   */
+  private String formatEventDate(long timeMillis) {
+    List<String> candidates = candidateLocales();
+    java.util.Locale locale =
+        candidates.isEmpty()
+            ? java.util.Locale.ENGLISH
+            : java.util.Locale.forLanguageTag(candidates.get(0));
+    Instant instant = Instant.ofEpochMilli(timeMillis);
+    ZoneId zone = ZoneId.systemDefault();
+
+    String configured = realm != null ? realm.getAttribute(EVENT_DATE_FORMAT_KEY) : null;
+    if (configured != null && !configured.isBlank() && !"auto".equalsIgnoreCase(configured)) {
+      String pattern =
+          EVENT_DATE_FORMAT_PRESETS.getOrDefault(configured.toLowerCase(java.util.Locale.ROOT), configured);
+      try {
+        return DateTimeFormatter.ofPattern(pattern, locale).withZone(zone).format(instant);
+      } catch (IllegalArgumentException e) {
+        log.warnf(
+            "Invalid %s value '%s' (%s); falling back to the locale-aware default format",
+            EVENT_DATE_FORMAT_KEY, configured, e.getMessage());
+      }
+    }
+
+    return DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+        .withLocale(locale)
+        .withZone(zone)
+        .format(instant);
   }
 
   /**

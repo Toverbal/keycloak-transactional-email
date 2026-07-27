@@ -10,6 +10,7 @@ All configuration is stored as realm attributes, managed via this extension's RE
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `_providerConfig.ext-email-template.provider`                 | Active provider ID (`sendgrid`, `brevo`, `postmark`, `mailtrap`, `mailgun`, `customerio`, `resend`, `awsses`). Empty or absent = disabled. |
 | `_providerConfig.ext-email-template.template.<name>`          | Provider template ID for a given email type (e.g. `template.password-reset`).                                                              |
+| `_providerConfig.ext-email-template.event-date-format`        | Format for `eventDateFormatted` on event-notification emails (see [Event date formatting](#event-date-formatting)). Unset = locale-aware default. |
 | `_providerConfig.ext-email-template.sendgrid.api-key`         | SendGrid API key                                                                                                                           |
 | `_providerConfig.ext-email-template.sendgrid.api-url`         | SendGrid API URL override (default: `https://api.sendgrid.com/v3/mail/send`)                                                               |
 | `_providerConfig.ext-email-template.brevo.api-key`            | Brevo API key                                                                                                                              |
@@ -83,6 +84,22 @@ Locale resolution, most specific first:
 Locale matching is case-insensitive (`nl` and `NL` are equivalent).
 
 This is intentionally **not** resolved via Keycloak's `LocaleSelectorProvider` (used for login-page/theme locale selection), because that also factors in the *current HTTP request's* cookie, `Accept-Language` header, and active authentication session. For sends triggered by the recipient's own browser (e.g. self-service forgot-password) that happens to line up with the recipient, but for admin-triggered sends (e.g. "Send verification email" in the Admin Console, or the `execute-actions-email` admin REST endpoint) it would reflect the *admin's* locale, not the recipient's - the opposite of what per-recipient routing needs. Reading the recipient's own stored attribute directly stays correct regardless of who or what triggered the send.
+
+---
+
+## Event date formatting
+
+Event-notification emails (`event-login_error`, `event-update_password`, etc. - see [template-variables.md](template-variables.md#event-notification-emails)) receive `eventDate` as a raw Unix millisecond timestamp, which isn't fit to put directly in a template. `eventDateFormatted` provides a human-readable rendering instead, controlled by the `_providerConfig.ext-email-template.event-date-format` realm attribute:
+
+| Value                  | Result                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| unset, blank, or `auto` | Locale-aware default (`DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)`), using the same recipient-locale resolution as template routing above |
+| `dmy`                   | `dd-MM-yyyy HH:mm` (e.g. `27-07-2026 15:49`)                |
+| `mdy`                   | `MM/dd/yyyy hh:mm a` (e.g. `07/27/2026 03:49 PM`)           |
+| `ymd`                   | `yyyy-MM-dd HH:mm` (e.g. `2026-07-27 15:49`)                |
+| anything else           | Used directly as a [`DateTimeFormatter` pattern](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html) - fully custom formats are supported, not just the three presets above (e.g. `EEEE d MMMM yyyy`) |
+
+An invalid custom pattern falls back to the locale-aware default rather than failing the send (logged as a warning). Formatted in the server's local timezone - Keycloak does not store a per-user timezone.
 
 ---
 

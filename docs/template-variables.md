@@ -117,10 +117,11 @@ These are sent when Keycloak's email notification for login events is enabled. A
 
 ### Common event variables
 
-| Variable         | Type   | Description                                |
-| ---------------- | ------ | ------------------------------------------ |
-| `eventDate`      | number | Unix timestamp (milliseconds) of the event |
-| `eventIpAddress` | string | IP address associated with the event       |
+| Variable            | Type   | Description                                                              |
+| ------------------- | ------ | ------------------------------------------------------------------------- |
+| `eventDate`         | number | Unix timestamp (milliseconds) of the event                                |
+| `eventDateFormatted` | string | Human-readable date/time, formatted using the same recipient-locale resolution as template routing (server's local timezone) |
+| `eventIpAddress`    | string | IP address associated with the event                                     |
 
 ### `event-login_error`
 
