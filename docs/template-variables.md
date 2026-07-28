@@ -55,6 +55,14 @@ Sent by admin when required actions (update password, verify email, etc.) are tr
 | `linkExpirationFormatted` | string | Human-readable expiration                             |
 | `requiredActionsText`     | string | Comma-separated list of required action display names |
 
+`requiredActionsText` is localized for the recipient using the same locale resolution as
+[locale-specific templates](configuration.md#locale-specific-templates) - display names come from
+Keycloak's own `login` theme message bundle (e.g. `updatePasswordTitle`, `emailVerifyTitle`), so
+they're translated into every language Keycloak itself ships (plus any realm-level localization
+overrides), not a separate hardcoded list. A handful of rare/custom required actions have no
+matching bundle key and fall back to a humanized version of their raw ID (e.g. `SOME_CUSTOM_ACTION`
+→ "Some Custom Action") - English-only, since there's no general-purpose translated name for those.
+
 ---
 
 ### `email-update-confirmation`

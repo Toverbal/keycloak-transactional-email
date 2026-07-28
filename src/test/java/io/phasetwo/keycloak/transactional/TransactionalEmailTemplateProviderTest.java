@@ -185,6 +185,80 @@ class TransactionalEmailTemplateProviderTest {
   }
 
   @Test
+  void sendExecuteActions_localizesRequiredActionsFromLoginThemeBundle() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions", "execute-actions-template");
+    // Mirrors Keycloak's own base login theme messages_en.properties keys/values.
+    mock.setLoginThemeMessage("en", "updatePasswordTitle", "Update password");
+    mock.setLoginThemeMessage("en", "loginTotpTitle", "Mobile Authenticator Setup");
+    templateProvider.setAttribute(
+        org.keycloak.models.Constants.TEMPLATE_ATTR_REQUIRED_ACTIONS,
+        java.util.List.of("UPDATE_PASSWORD", "CONFIGURE_TOTP"));
+
+    templateProvider.sendExecuteActions("https://example.com/actions", 60);
+
+    Map<String, Object> vars = recordingProvider.lastVars.get();
+    assertThat(vars.get("requiredActionsText"), is("Update password, Mobile Authenticator Setup"));
+  }
+
+  @Test
+  void sendExecuteActions_localizesRequiredActionsPerRecipientLocale() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions", "execute-actions-template");
+    mock.setLoginThemeMessage("en", "updatePasswordTitle", "Update password");
+    mock.setLoginThemeMessage("nl", "updatePasswordTitle", "Wachtwoord bijwerken");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+    templateProvider.setAttribute(
+        org.keycloak.models.Constants.TEMPLATE_ATTR_REQUIRED_ACTIONS,
+        java.util.List.of("UPDATE_PASSWORD"));
+
+    templateProvider.sendExecuteActions("https://example.com/actions", 60);
+
+    Map<String, Object> vars = recordingProvider.lastVars.get();
+    assertThat(vars.get("requiredActionsText"), is("Wachtwoord bijwerken"));
+  }
+
+  @Test
+  void sendExecuteActions_humanizesUnknownRequiredAction() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions", "execute-actions-template");
+    templateProvider.setAttribute(
+        org.keycloak.models.Constants.TEMPLATE_ATTR_REQUIRED_ACTIONS,
+        java.util.List.of("some_custom_action"));
+
+    templateProvider.sendExecuteActions("https://example.com/actions", 60);
+
+    Map<String, Object> vars = recordingProvider.lastVars.get();
+    assertThat(vars.get("requiredActionsText"), is("Some Custom Action"));
+  }
+
+  @Test
+  void sendExecuteActions_fallsBackToHumanizedName_whenThemeHasNoMatchingKey() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions", "execute-actions-template");
+    // UPDATE_PASSWORD is a known action, but no theme message was configured for it here.
+    templateProvider.setAttribute(
+        org.keycloak.models.Constants.TEMPLATE_ATTR_REQUIRED_ACTIONS,
+        java.util.List.of("UPDATE_PASSWORD"));
+
+    templateProvider.sendExecuteActions("https://example.com/actions", 60);
+
+    Map<String, Object> vars = recordingProvider.lastVars.get();
+    assertThat(vars.get("requiredActionsText"), is("Update Password"));
+  }
+
+  @Test
+  void sendExecuteActions_noRequiredActionsAttribute_producesEmptyText() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions", "execute-actions-template");
+
+    templateProvider.sendExecuteActions("https://example.com/actions", 60);
+
+    Map<String, Object> vars = recordingProvider.lastVars.get();
+    assertThat(vars.get("requiredActionsText"), is(""));
+  }
+
+  @Test
   void eventDateFormat_dmyPreset() throws Exception {
     TransactionalEmailTemplateProvider templateProvider = buildProvider();
     mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");

@@ -6,19 +6,23 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.jbosslog.JBossLog;
 import org.keycloak.email.EmailException;
 import org.keycloak.email.freemarker.FreeMarkerEmailTemplateProvider;
 import org.keycloak.events.Event;
+import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.OrganizationModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.theme.Theme;
 
 /**
  * Extends {@link FreeMarkerEmailTemplateProvider} to intercept email sends and route them to a
@@ -100,6 +104,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       vars.put("link", link);
       vars.put("linkExpiration", expirationInMinutes);
       vars.put("linkExpirationFormatted", formatExpiration(expirationInMinutes));
+      vars.put("requiredActionsText", buildRequiredActionsText());
       sendViaProvider(templateId.get(), vars, null);
     } else {
       super.sendExecuteActions(link, expirationInMinutes);
@@ -283,6 +288,20 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
     return locale.trim().toLowerCase(java.util.Locale.ROOT);
   }
 
+  /**
+   * Resolves a {@link java.util.Locale} for the recipient, using the same priority as template
+   * routing ({@link #candidateLocales()}: recipient's own stored locale, then realm default),
+   * falling back to English if neither is set. Shared by everything that needs an actual {@code
+   * Locale} object for the recipient rather than just a template-routing key - {@link
+   * #formatEventDate} and {@link #buildRequiredActionsText}.
+   */
+  private java.util.Locale resolveRecipientLocale() {
+    List<String> candidates = candidateLocales();
+    return candidates.isEmpty()
+        ? java.util.Locale.ENGLISH
+        : java.util.Locale.forLanguageTag(candidates.get(0));
+  }
+
   private TransactionalEmailProvider resolveProvider() {
     String providerId = realm.getAttribute(PROVIDER_KEY);
     return session.getProvider(TransactionalEmailProvider.class, providerId);
@@ -309,6 +328,92 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
   }
 
   /**
+   * Known required-action provider IDs, mapped to the message key Keycloak's own base {@code
+   * login} theme uses for that action's page title (see {@code
+   * theme/base/login/messages/messages_*.properties} in the Keycloak repo) - reusing these gets
+   * every language Keycloak itself ships translations for, for free, including realm-level
+   * localization overrides (via {@link #buildRequiredActionsText}'s use of {@code
+   * getEnhancedMessages}), rather than a second, hand-maintained, English-only translation of the
+   * same handful of strings. Deliberately NOT the {@code email} theme's own bundle - it has no
+   * equivalent keys; these are login-flow page titles.
+   *
+   * <p>Actions with no entry here (rare/custom ones, e.g. {@code delete_account}) fall back to
+   * {@link #humanizeRequiredAction}, which is English-only - there is no general-purpose "action
+   * ID to localized name" bundle in Keycloak for those.
+   */
+  private static final Map<String, String> REQUIRED_ACTION_MESSAGE_KEYS =
+      Map.ofEntries(
+          Map.entry("UPDATE_PASSWORD", "updatePasswordTitle"),
+          Map.entry("VERIFY_EMAIL", "emailVerifyTitle"),
+          Map.entry("UPDATE_PROFILE", "loginProfileTitle"),
+          Map.entry("CONFIGURE_TOTP", "loginTotpTitle"),
+          Map.entry("TERMS_AND_CONDITIONS", "termsTitle"),
+          Map.entry("webauthn-register", "webauthn-registration-title"),
+          Map.entry("webauthn-register-passwordless", "webauthn-registration-title"));
+
+  /**
+   * Builds the comma-separated {@code requiredActionsText} variable for the {@code executeActions}
+   * email from the required-action IDs Keycloak attaches via {@code setAttribute(Constants
+   * .TEMPLATE_ATTR_REQUIRED_ACTIONS, ...)} before calling {@link #sendExecuteActions} (see {@code
+   * UserResource#executeActionsEmail} - this is not something the base {@link
+   * FreeMarkerEmailTemplateProvider} exposes as a template variable itself, so it has to be read
+   * directly off the inherited {@code attributes} map, the same way {@link
+   * #sendConfirmIdentityBrokerLink} already reads {@code IDENTITY_PROVIDER_BROKER_CONTEXT}).
+   *
+   * <p>Each action name is localized for the recipient (same locale resolution as {@link
+   * #formatEventDate}) via Keycloak's own login theme message bundle, not a hand-rolled English
+   * map - see {@link #REQUIRED_ACTION_MESSAGE_KEYS}.
+   */
+  @SuppressWarnings("unchecked")
+  private String buildRequiredActionsText() {
+    Object raw = attributes.get(Constants.TEMPLATE_ATTR_REQUIRED_ACTIONS);
+    if (!(raw instanceof List)) return "";
+
+    Properties messages = loginThemeMessages(resolveRecipientLocale());
+
+    return ((List<Object>) raw)
+        .stream()
+            .map(String::valueOf)
+            .map(actionId -> localizeRequiredAction(actionId, messages))
+            .collect(Collectors.joining(", "));
+  }
+
+  private Properties loginThemeMessages(java.util.Locale locale) {
+    // Broad catch deliberate: resolving a display-name translation must never be the reason an
+    // actual email fails to send - degrade to humanizeRequiredAction's English fallback instead.
+    try {
+      Theme theme = session.theme().getTheme(Theme.Type.LOGIN);
+      return realm != null ? theme.getEnhancedMessages(realm, locale) : theme.getMessages(locale);
+    } catch (Exception e) {
+      log.warnf("Could not load login theme messages for locale '%s': %s", locale, e.getMessage());
+      return new Properties();
+    }
+  }
+
+  private static String localizeRequiredAction(String actionId, Properties messages) {
+    String messageKey = REQUIRED_ACTION_MESSAGE_KEYS.get(actionId);
+    if (messageKey != null) {
+      String localized = messages.getProperty(messageKey);
+      if (localized != null && !localized.isBlank()) return localized;
+    }
+    return humanizeRequiredAction(actionId);
+  }
+
+  // English-only last resort for required actions with no entry in REQUIRED_ACTION_MESSAGE_KEYS
+  // (rare/custom ones) or whose bundle lookup failed - e.g. "SOME_CUSTOM_ACTION" -> "Some Custom
+  // Action". Better than showing the raw provider ID, but not a substitute for real localization.
+  private static String humanizeRequiredAction(String actionId) {
+    String[] words = actionId.replace('-', '_').split("_+");
+    return Arrays.stream(words)
+        .filter(w -> !w.isBlank())
+        .map(
+            w ->
+                Character.toUpperCase(w.charAt(0))
+                    + w.substring(1).toLowerCase(java.util.Locale.ROOT))
+        .collect(Collectors.joining(" "));
+  }
+
+  /**
    * Formats an event timestamp for display, using the same recipient-locale resolution as template
    * routing ({@link #candidateLocales()}) so the date reads naturally for whoever receives the
    * email, rather than exposing the raw millisecond epoch value ({@code eventDate}) that {@link
@@ -326,11 +431,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
    * </ul>
    */
   private String formatEventDate(long timeMillis) {
-    List<String> candidates = candidateLocales();
-    java.util.Locale locale =
-        candidates.isEmpty()
-            ? java.util.Locale.ENGLISH
-            : java.util.Locale.forLanguageTag(candidates.get(0));
+    java.util.Locale locale = resolveRecipientLocale();
     Instant instant = Instant.ofEpochMilli(timeMillis);
     ZoneId zone = ZoneId.systemDefault();
 
