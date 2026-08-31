@@ -48,7 +48,7 @@ cp target/keycloak-transactional-email-*.jar /opt/keycloak/providers/
 
 ## Configuration
 
-All configuration is stored as realm attributes, managed via this extension's REST API — see **[docs/configuration.md](docs/configuration.md)** for the full reference.
+All configuration is stored as realm attributes, managed either via this extension's REST API or from the Admin Console when you run the Phase Two Keycloak image (whose `phasetwo-ui` admin theme has a realm-attributes page) — see **[docs/configuration.md](docs/configuration.md)** for the full reference.
 
 Quick example via the REST API:
 

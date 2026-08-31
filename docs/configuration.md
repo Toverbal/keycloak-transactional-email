@@ -1,6 +1,6 @@
 # Configuration
 
-All configuration is stored as realm attributes, managed via this extension's REST API (see [Setting attributes](#setting-attributes) below).
+All configuration is stored as realm attributes. There are two ways to manage them: this extension's REST API, or the Admin Console when you run the Phase Two Keycloak image - see [Setting attributes](#setting-attributes) below.
 
 ---
 
@@ -123,11 +123,11 @@ The format string is realm-wide; only the locale it is rendered with varies per 
 
 ## Setting attributes
 
-Keycloak's Admin Console has no generic UI for editing arbitrary realm-level attributes like these ([keycloak/keycloak#17732](https://github.com/keycloak/keycloak/issues/17732)). Use this extension's own REST resource instead (see [REST API](#rest-api) below), or the underlying Keycloak Admin REST API directly (`PUT /admin/realms/{realm}` with an `attributes` map).
+### Option 1: the REST API
 
-Don't confuse this with **Realm Settings → User profile → Attributes**, which manages the *user profile schema* (`username`, `email`, `locale`, etc.) - that's an unrelated feature and won't show or edit any `_providerConfig.ext-email-template.*` values.
+Works on any Keycloak image. Use this extension's own REST resource (see [REST API](#rest-api) below), or the Keycloak Admin REST API directly (`PUT /admin/realms/{realm}` with an `attributes` map).
 
-### Example: configure SendGrid for password reset
+**Example: configure SendGrid for password reset**
 
 ```bash
 curl -X PUT "$KC/realms/myrealm/ext-email-template/config" \
@@ -142,7 +142,30 @@ curl -X PUT "$KC/realms/myrealm/ext-email-template/config" \
 
 Repeat the `templates` entry for any additional email types you want to route, using the template names from the [template variables reference](template-variables.md).
 
-To disable the extension without removing individual template mappings, set `provider` to an empty value or delete it.
+### Option 2: the Admin Console
+
+The `phasetwo-ui` admin theme, shipped in the [Phase Two Keycloak image](https://github.com/p2-inc/keycloak), adds a page for editing realm attributes, so the whole configuration can be done from the Admin Console without touching the API:
+
+1. Open the Admin Console and select your realm.
+2. If the realm isn't already using it, set **Realm Settings → Themes → Admin theme** to `phasetwo-ui`.
+3. Go to **Realm Settings** → the **Attributes** tab.
+4. Use **Add attribute** to create each key-value pair.
+
+**Example: configure SendGrid for password reset**
+
+| Key                                                          | Value                |
+| ------------------------------------------------------------ | -------------------- |
+| `_providerConfig.ext-email-template.provider`                | `sendgrid`           |
+| `_providerConfig.ext-email-template.sendgrid.api-key`        | `SG.your-api-key`    |
+| `_providerConfig.ext-email-template.template.password-reset` | `d-your-template-id` |
+
+Repeat the last row for any additional email types, and add the locale-suffixed keys from [locale-specific templates](#locale-specific-templates) the same way.
+
+Stock Keycloak's admin console has no generic editor for realm-level attributes ([keycloak/keycloak#17732](https://github.com/keycloak/keycloak/issues/17732)), so on a vanilla image use option 1. Either way, don't confuse this tab with **Realm Settings → User profile → Attributes**, which manages the *user profile schema* (`username`, `email`, `locale`, etc.) - an unrelated feature that won't show or edit any `_providerConfig.ext-email-template.*` values.
+
+### Disabling
+
+To disable the extension without removing individual template mappings, set the provider to an empty value or delete it.
 
 ---
 
