@@ -200,6 +200,24 @@ class TransactionalEmailTemplateProviderTest {
   }
 
   @Test
+  void languageFallback_alsoFixesTheFormattingLocale() throws Exception {
+    // The winning tier is the .nl one, so the whole email renders in nl - not in the recipient's
+    // own nl-NL, and not in ROOT. Asserted through the message bundle the action names come from.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions.nl", "nl-execute-actions-template");
+    mock.setLoginThemeMessage("nl", "updatePasswordTitle", "Wachtwoord bijwerken");
+    mock.setUserAttribute(UserModel.LOCALE, "nl_NL");
+    templateProvider.setAttribute(
+        org.keycloak.models.Constants.TEMPLATE_ATTR_REQUIRED_ACTIONS,
+        java.util.List.of("UPDATE_PASSWORD"));
+
+    templateProvider.sendExecuteActions("https://example.com/actions", 60);
+
+    assertThat(recordingProvider.lastTemplateId.get(), is("nl-execute-actions-template"));
+    assertThat(recordingProvider.lastVars.get().get("requiredActionsText"), is("Wachtwoord bijwerken"));
+  }
+
+  @Test
   void blankLocaleMapping_fallsThroughToBaseTemplate() throws Exception {
     // An attribute cleared to "" is treated as absent rather than as a configured empty template.
     TransactionalEmailTemplateProvider templateProvider = buildProvider();
@@ -253,7 +271,7 @@ class TransactionalEmailTemplateProviderTest {
   }
 
   @Test
-  void eventDateFormatted_reflectsRecipientLocale() throws Exception {
+  void eventDateFormatted_reflectsTheSelectedTemplateLocale() throws Exception {
     Event event = new Event();
     event.setType(EventType.LOGIN_ERROR);
     event.setTime(1710504000000L);
@@ -266,6 +284,7 @@ class TransactionalEmailTemplateProviderTest {
 
     TransactionalEmailTemplateProvider nlProvider = buildProvider();
     mock.setAttribute(TEMPLATE_PREFIX + "event-login_error", "login-error-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "event-login_error.nl", "nl-login-error-template");
     mock.setUserAttribute(UserModel.LOCALE, "nl");
     nlProvider.sendEvent(event);
     String nlFormatted = (String) recordingProvider.lastVars.get().get("eventDateFormatted");
@@ -291,9 +310,10 @@ class TransactionalEmailTemplateProviderTest {
   }
 
   @Test
-  void sendExecuteActions_localizesRequiredActionsPerRecipientLocale() throws Exception {
+  void sendExecuteActions_localizesRequiredActionsToTheSelectedTemplateLocale() throws Exception {
     TransactionalEmailTemplateProvider templateProvider = buildProvider();
     mock.setAttribute(TEMPLATE_PREFIX + "executeActions", "execute-actions-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions.nl", "nl-execute-actions-template");
     mock.setLoginThemeMessage("en", "updatePasswordTitle", "Update password");
     mock.setLoginThemeMessage("nl", "updatePasswordTitle", "Wachtwoord bijwerken");
     mock.setUserAttribute(UserModel.LOCALE, "nl");
@@ -410,5 +430,47 @@ class TransactionalEmailTemplateProviderTest {
     // Doesn't throw, and still produces a non-blank formatted string.
     String formatted = (String) recordingProvider.lastVars.get().get("eventDateFormatted");
     assertThat(formatted.isBlank(), is(false));
+  }
+
+  @Test
+  void formattingLocaleFollowsTheSelectedTemplate_notTheUsersOwnLocale() throws Exception {
+    // The case that motivated resolving template and locale as one decision: the recipient's own
+    // locale (de) has no template, so the realm default (fr) tier wins the routing. The variables
+    // injected into that French body must be French too - never German.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions.fr", "fr-execute-actions-template");
+    mock.setLoginThemeMessage("fr", "updatePasswordTitle", "Mettre a jour le mot de passe");
+    mock.setLoginThemeMessage("de", "updatePasswordTitle", "Passwort aktualisieren");
+    mock.setRealmDefaultLocale("fr");
+    mock.setUserAttribute(UserModel.LOCALE, "de");
+    templateProvider.setAttribute(
+        org.keycloak.models.Constants.TEMPLATE_ATTR_REQUIRED_ACTIONS,
+        java.util.List.of("UPDATE_PASSWORD"));
+
+    templateProvider.sendExecuteActions("https://example.com/actions", 60);
+
+    assertThat(recordingProvider.lastTemplateId.get(), is("fr-execute-actions-template"));
+    assertThat(
+        recordingProvider.lastVars.get().get("requiredActionsText"),
+        is("Mettre a jour le mot de passe"));
+  }
+
+  @Test
+  void baseTemplateFormatsInEnglish_notTheUsersOwnLocale() throws Exception {
+    // The locale-less mapping carries no language information, so it renders in the documented
+    // base locale (English, matching Keycloak's no-suffix message bundle) rather than reaching
+    // back to the recipient's locale and mixing Dutch strings into an unknown-language template.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "executeActions", "base-execute-actions-template");
+    mock.setLoginThemeMessage("en", "updatePasswordTitle", "Update password");
+    mock.setLoginThemeMessage("nl", "updatePasswordTitle", "Wachtwoord bijwerken");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+    templateProvider.setAttribute(
+        org.keycloak.models.Constants.TEMPLATE_ATTR_REQUIRED_ACTIONS,
+        java.util.List.of("UPDATE_PASSWORD"));
+
+    templateProvider.sendExecuteActions("https://example.com/actions", 60);
+
+    assertThat(recordingProvider.lastVars.get().get("requiredActionsText"), is("Update password"));
   }
 }

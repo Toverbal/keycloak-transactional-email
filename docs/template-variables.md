@@ -55,8 +55,9 @@ Sent by admin when required actions (update password, verify email, etc.) are tr
 | `linkExpirationFormatted` | string | Human-readable expiration                             |
 | `requiredActionsText`     | string | Comma-separated list of required action display names |
 
-`requiredActionsText` is localized for the recipient using the same locale resolution as
-[locale-specific templates](configuration.md#locale-specific-templates) - display names come from
+`requiredActionsText` is localized in the email's
+[effective locale](configuration.md#one-locale-per-email) - the language of the template that was
+actually selected, so the action names always match the body they're injected into. Display names come from
 Keycloak's own `login` theme message bundle (e.g. `updatePasswordTitle`, `emailVerifyTitle`), so
 they're translated into every language Keycloak itself ships (plus any realm-level localization
 overrides), not a separate hardcoded list. A handful of rare/custom required actions have no
@@ -128,7 +129,7 @@ These are sent when Keycloak's email notification for login events is enabled. A
 | Variable            | Type   | Description                                                              |
 | ------------------- | ------ | ------------------------------------------------------------------------- |
 | `eventDate`         | number | Unix timestamp (milliseconds) of the event                                |
-| `eventDateFormatted` | string | Human-readable date/time, formatted using the same recipient-locale resolution as template routing (server's local timezone) |
+| `eventDateFormatted` | string | Human-readable date/time, rendered in the email's [effective locale](configuration.md#one-locale-per-email) and the server's local timezone |
 | `eventIpAddress`    | string | IP address associated with the event                                     |
 
 ### `event-login_error`

@@ -67,18 +67,34 @@ _providerConfig.ext-email-template.template.<name>
 _providerConfig.ext-email-template.template.<name>.<locale>
     → optional locale-specific override, tried before the locale-less key above
     → e.g. _providerConfig.ext-email-template.template.password-reset.nl = "d-nl456"
-    → locale is resolved as: the recipient's own UserModel.LOCALE attribute (set e.g. by the
-      account console's language switcher), then the realm's default locale, in that order -
-      each candidate that has no matching mapping is skipped, falling through to the next one
-      and finally to the locale-less key
-    → a region-qualified locale also contributes its language subtag as a candidate, immediately
-      after itself (nl-NL → nl), so the recipient's own language is tried BEFORE the realm
-      default: falling back within their locale is more specific than giving up on it. Operators
-      configure one template per language while recipients routinely carry nl_NL / en-GB
-    → locale suffixes match case-insensitively on BOTH sides (stored user locale and configured
-      key), via localizedAttribute(); underscores read as hyphens there too, so nl_NL and nl-NL
-      are one key. The email type in the key still matches exactly, camel case included
-      (executeActions). Blank values count as absent.
+
+    ONE LOCALE PER EMAIL. resolveTemplate() returns a ResolvedTemplate(templateId, locale) pair:
+    the tier that selects the template also fixes the locale everything else in that email is
+    rendered in (eventDateFormatted, requiredActionsText). Tiers, each only
+    eligible if a template is actually configured for it:
+      1. template.<name>.<userLocale>        → recipient's own UserModel.LOCALE (set e.g. by the
+                                               account console's language switcher)
+      2. template.<name>.<userLanguage>      → language subtag of the above, if region-qualified
+                                               (nl-NL → nl). Tried BEFORE the realm default:
+                                               falling back within the recipient's own locale is
+                                               more specific than giving up on it
+      3. template.<name>.<realmDefaultLocale>
+      4. template.<name>.<realmDefaultLang>  → same language-subtag fallback for the realm default
+      5. template.<name>                     → renders in BASE_TEMPLATE_LOCALE (English), since
+                                               the extension can't know what language the operator
+                                               wrote that template in - a fixed convention
+                                               matching Keycloak's no-suffix messages.properties
+      6. nothing                             → FreeMarker + SMTP
+    A locale with no template is skipped entirely rather than being allowed to win the formatting
+    while losing the routing - otherwise a French body could arrive with German dates in it.
+    NOT covered: linkExpirationFormatted, which formatExpiration() builds in English whatever the
+    locale ("2 hours") - pre-existing upstream behaviour, left alone deliberately.
+
+    Locale suffixes match case-insensitively on BOTH sides (stored user locale and configured key),
+    via localizedAttribute(); underscores read as hyphens there too, so nl_NL and nl-NL are one
+    key. The email type in the key still matches exactly, camel case included (executeActions).
+    Blank values count as absent.
+
     → deliberately NOT resolved via LocaleSelectorProvider (which also considers the CURRENT
       request's cookie/Accept-Language/auth session) - for admin-triggered sends (e.g. "Send
       verification email" in the admin console) that reflects the ADMIN, not the recipient

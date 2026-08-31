@@ -74,16 +74,28 @@ _providerConfig.ext-email-template.template.password-reset.nl = d-nl-template-id
 _providerConfig.ext-email-template.template.password-reset.fr = d-fr-template-id
 ```
 
-Locale resolution, most specific first:
+### One locale per email
 
-1. The recipient's own stored profile locale (`UserModel.LOCALE` attribute - the same one set by the account console's language switcher).
-2. The language of that locale, if it was region-qualified (`nl-NL` → `nl`).
-3. The realm's configured default locale.
-4. The language of the realm default, if it was region-qualified.
-5. The locale-less `template.<name>` key, if none of the above has a mapping.
-6. Standard FreeMarker + SMTP, if even that is absent.
+Each email resolves to a single **effective locale**, and every locale-dependent value this extension resolves is rendered in it: the template body, `eventDateFormatted` and `requiredActionsText`. A tier only wins if a template is actually configured for it, so the tier that picks the body also fixes the language of what gets injected into it - a French body can never arrive with German dates in it.
+
+One exception, inherited from Keycloak rather than introduced here: `linkExpirationFormatted` is built in English (`2 hours`) whatever the effective locale is. Use `linkExpiration`, the raw number of minutes, if you want to phrase that yourself in the template.
+
+Resolution, most specific first:
+
+| # | Tier | Template | Everything else rendered in |
+| - | ---- | -------- | --------------------------- |
+| 1 | Recipient's own stored profile locale (`UserModel.LOCALE` - the same attribute set by the account console's language switcher) | `template.<name>.<userLocale>` | that locale |
+| 2 | The language of that locale, if it was region-qualified | `template.<name>.<userLanguage>` | that language |
+| 3 | The realm's configured default locale | `template.<name>.<realmDefaultLocale>` | that locale |
+| 4 | The language of the realm default, if it was region-qualified | `template.<name>.<realmDefaultLanguage>` | that language |
+| 5 | The locale-less mapping | `template.<name>` | **English** (see below) |
+| 6 | Nothing configured | - | standard FreeMarker + SMTP, as without this extension |
+
+A locale whose template isn't configured is skipped entirely - it can't win the formatting while losing the routing.
 
 **Region-qualified locales** fall back to their language before the realm default is considered, so a recipient stored as `nl-NL` tries `template.password-reset.nl-NL`, then `template.password-reset.nl`, and only then the realm default. Recipients carry region-qualified locales routinely - an identity-provider attribute mapper writing `nl_NL`, a browser negotiating `en-GB` - while templates are normally configured one per language, so without this they would skip a perfectly good `.nl` template. Falling back within the recipient's own locale is treated as more specific than giving up on it, so a `nl-NL` recipient in an `en`-default realm with both `.nl` and `.en` templates gets Dutch. Configure `.nl-NL` explicitly if you want to distinguish it from `.nl`; the more specific key always wins.
+
+**Why English for the locale-less tier:** the extension can't know what language you wrote that template in, so it fixes a convention rather than guessing - English, matching Keycloak's own no-suffix `messages.properties` bundle. If a recipient should get Dutch dates and action names, give them a Dutch template (`template.<name>.nl`); that's what makes `nl` the email's effective locale.
 
 Locale matching is case-insensitive (`nl` and `NL` are equivalent), and underscores are read as hyphens (`nl_NL` and `nl-NL` are the same key), on both the stored locale and the configured attribute key.
 
@@ -97,13 +109,15 @@ Event-notification emails (`event-login_error`, `event-update_password`, etc. - 
 
 | Value                  | Result                                                    |
 | ----------------------- | ---------------------------------------------------------- |
-| unset, blank, or `auto` | Locale-aware default (`DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)`), using the same recipient-locale resolution as template routing above |
+| unset, blank, or `auto` | Locale-aware default (`DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)`), in the email's [effective locale](#one-locale-per-email) |
 | `dmy`                   | `dd-MM-yyyy HH:mm` (e.g. `27-07-2026 15:49`)                |
 | `mdy`                   | `MM/dd/yyyy hh:mm a` (e.g. `07/27/2026 03:49 PM`)           |
 | `ymd`                   | `yyyy-MM-dd HH:mm` (e.g. `2026-07-27 15:49`)                |
 | anything else           | Used directly as a [`DateTimeFormatter` pattern](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html) - fully custom formats are supported, not just the three presets above (e.g. `EEEE d MMMM yyyy`) |
 
 An invalid custom pattern falls back to the locale-aware default rather than failing the send (logged as a warning). Formatted in the server's local timezone - Keycloak does not store a per-user timezone.
+
+The format string is realm-wide; only the locale it is rendered with varies per email, and it is the email's [effective locale](#one-locale-per-email) - the same one the template body was selected for.
 
 ---
 

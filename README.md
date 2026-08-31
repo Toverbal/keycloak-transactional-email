@@ -70,7 +70,7 @@ curl -X PUT "$KC/realms/myrealm/ext-email-template/config" \
 
 Set `provider` to `""` or `null` to disable transactional routing and revert to SMTP.
 
-Each email type also supports locale-specific template overrides (e.g. `password-reset.nl`), resolved from the recipient's own stored locale, falling back to the realm's default locale and then the locale-less mapping - see [docs/configuration.md#locale-specific-templates](docs/configuration.md#locale-specific-templates).
+Each email type also supports locale-specific template overrides (e.g. `password-reset.nl`), resolved from the recipient's own stored locale (a region-qualified one like `nl-NL` falling back to its language first), then the realm's default locale, then the locale-less mapping. Whichever tier wins also fixes the locale the rest of that email is rendered in - formatted dates, action names - so a body and the variables this extension resolves for it can't end up in different languages. See [docs/configuration.md#locale-specific-templates](docs/configuration.md#locale-specific-templates).
 
 ---
 
