@@ -112,7 +112,7 @@ class TransactionalEmailTemplateProviderTest {
   }
 
   @Test
-  void localeLookupIsCaseInsensitive() throws Exception {
+  void localeLookupIsCaseInsensitive_onTheStoredUserLocale() throws Exception {
     TransactionalEmailTemplateProvider templateProvider = buildProvider();
     mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
     mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
@@ -121,6 +121,95 @@ class TransactionalEmailTemplateProviderTest {
     templateProvider.sendPasswordReset("https://example.com/reset", 60);
 
     assertThat(recordingProvider.lastTemplateId.get(), is("nl-template"));
+  }
+
+  @Test
+  void localeLookupIsCaseInsensitive_onTheConfiguredAttributeKey() throws Exception {
+    // The other direction: a lowercase user locale must still find an attribute key whose locale
+    // suffix was typed in uppercase. Only the suffix is case-insensitive - the email type in the
+    // key (here "password-reset") still matches exactly.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.NL", "nl-template");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastTemplateId.get(), is("nl-template"));
+  }
+
+  @Test
+  void underscoredStoredLocale_matchesTheHyphenatedAttributeKey() throws Exception {
+    // A locale stored Java-style (nl_NL, as an IdP attribute mapper might write it) has to resolve
+    // the same as the BCP-47 nl-NL. Left as-is it matches no key at all, and further down the line
+    // Locale.forLanguageTag turns it into ROOT, formatting the email in no language in particular.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl-NL", "nl-template");
+    mock.setUserAttribute(UserModel.LOCALE, "nl_NL");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastTemplateId.get(), is("nl-template"));
+  }
+
+  @Test
+  void regionalStoredLocale_fallsBackToTheLanguageOnlyTemplate() throws Exception {
+    // Operators configure one template per language, but recipients routinely carry a
+    // region-qualified locale (an IdP attribute mapper writing nl_NL, a browser negotiating
+    // en-GB). Without a language-subtag fallback, nl-NL would skip a perfectly good .nl template
+    // and land on the base one.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setUserAttribute(UserModel.LOCALE, "nl-NL");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastTemplateId.get(), is("nl-template"));
+  }
+
+  @Test
+  void regionalTemplate_winsOverTheLanguageOnlyTemplate() throws Exception {
+    // The fallback only applies when the region-qualified key is absent: a realm that went to the
+    // trouble of configuring .nl-NL gets it, not the broader .nl.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl-NL", "nl-nl-template");
+    mock.setUserAttribute(UserModel.LOCALE, "nl-NL");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastTemplateId.get(), is("nl-nl-template"));
+  }
+
+  @Test
+  void usersLanguageFallback_winsOverTheRealmDefaultLocale() throws Exception {
+    // Ordering check: falling back within the recipient's own locale (nl-NL -> nl) is still more
+    // specific than giving up on them and using the realm default, so a Dutch recipient in an
+    // English-default realm gets Dutch rather than English.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.en", "en-template");
+    mock.setRealmDefaultLocale("en");
+    mock.setUserAttribute(UserModel.LOCALE, "nl-NL");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastTemplateId.get(), is("nl-template"));
+  }
+
+  @Test
+  void blankLocaleMapping_fallsThroughToBaseTemplate() throws Exception {
+    // An attribute cleared to "" is treated as absent rather than as a configured empty template.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastTemplateId.get(), is("base-template"));
   }
 
   @Test

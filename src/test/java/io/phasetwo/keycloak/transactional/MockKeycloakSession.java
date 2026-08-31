@@ -139,6 +139,8 @@ class MockKeycloakSession {
           switch (method.getName()) {
             case "getAttribute":
               return realmAttributes.get((String) args[0]);
+            case "getAttributes":
+              return realmAttributes;
             case "getDefaultLocale":
               return realmDefaultLocale;
             case "getSmtpConfig":

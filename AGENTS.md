@@ -71,6 +71,14 @@ _providerConfig.ext-email-template.template.<name>.<locale>
       account console's language switcher), then the realm's default locale, in that order -
       each candidate that has no matching mapping is skipped, falling through to the next one
       and finally to the locale-less key
+    → a region-qualified locale also contributes its language subtag as a candidate, immediately
+      after itself (nl-NL → nl), so the recipient's own language is tried BEFORE the realm
+      default: falling back within their locale is more specific than giving up on it. Operators
+      configure one template per language while recipients routinely carry nl_NL / en-GB
+    → locale suffixes match case-insensitively on BOTH sides (stored user locale and configured
+      key), via localizedAttribute(); underscores read as hyphens there too, so nl_NL and nl-NL
+      are one key. The email type in the key still matches exactly, camel case included
+      (executeActions). Blank values count as absent.
     → deliberately NOT resolved via LocaleSelectorProvider (which also considers the CURRENT
       request's cookie/Accept-Language/auth session) - for admin-triggered sends (e.g. "Send
       verification email" in the admin console) that reflects the ADMIN, not the recipient

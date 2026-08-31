@@ -77,11 +77,15 @@ _providerConfig.ext-email-template.template.password-reset.fr = d-fr-template-id
 Locale resolution, most specific first:
 
 1. The recipient's own stored profile locale (`UserModel.LOCALE` attribute - the same one set by the account console's language switcher).
-2. The realm's configured default locale.
-3. The locale-less `template.<name>` key, if neither of the above has a mapping.
-4. Standard FreeMarker + SMTP, if even that is absent.
+2. The language of that locale, if it was region-qualified (`nl-NL` → `nl`).
+3. The realm's configured default locale.
+4. The language of the realm default, if it was region-qualified.
+5. The locale-less `template.<name>` key, if none of the above has a mapping.
+6. Standard FreeMarker + SMTP, if even that is absent.
 
-Locale matching is case-insensitive (`nl` and `NL` are equivalent).
+**Region-qualified locales** fall back to their language before the realm default is considered, so a recipient stored as `nl-NL` tries `template.password-reset.nl-NL`, then `template.password-reset.nl`, and only then the realm default. Recipients carry region-qualified locales routinely - an identity-provider attribute mapper writing `nl_NL`, a browser negotiating `en-GB` - while templates are normally configured one per language, so without this they would skip a perfectly good `.nl` template. Falling back within the recipient's own locale is treated as more specific than giving up on it, so a `nl-NL` recipient in an `en`-default realm with both `.nl` and `.en` templates gets Dutch. Configure `.nl-NL` explicitly if you want to distinguish it from `.nl`; the more specific key always wins.
+
+Locale matching is case-insensitive (`nl` and `NL` are equivalent), and underscores are read as hyphens (`nl_NL` and `nl-NL` are the same key), on both the stored locale and the configured attribute key.
 
 This is intentionally **not** resolved via Keycloak's `LocaleSelectorProvider` (used for login-page/theme locale selection), because that also factors in the *current HTTP request's* cookie, `Accept-Language` header, and active authentication session. For sends triggered by the recipient's own browser (e.g. self-service forgot-password) that happens to line up with the recipient, but for admin-triggered sends (e.g. "Send verification email" in the Admin Console, or the `execute-actions-email` admin REST endpoint) it would reflect the *admin's* locale, not the recipient's - the opposite of what per-recipient routing needs. Reading the recipient's own stored attribute directly stays correct regardless of who or what triggered the send.
 

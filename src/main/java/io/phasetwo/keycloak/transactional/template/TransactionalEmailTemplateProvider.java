@@ -253,8 +253,8 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
     }
 
     for (String locale : candidateLocales()) {
-      String localized = realm.getAttribute(TEMPLATE_KEY_PREFIX + templateName + "." + locale);
-      if (localized != null && !localized.isBlank()) {
+      String localized = localizedAttribute(TEMPLATE_KEY_PREFIX + templateName, locale);
+      if (localized != null) {
         log.debugf("Using locale '%s' template mapping for %s", locale, templateName);
         return Optional.of(localized);
       }
@@ -270,22 +270,85 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
     return Optional.of(templateId);
   }
 
+  /**
+   * Reads the realm attribute {@code <prefix>.<locale>}, matching the locale suffix
+   * case-insensitively, so a key configured as {@code ...password-reset.NL} is found for a
+   * recipient locale of {@code nl} and vice versa - locales are conventionally lowercase, but
+   * nothing stops an operator typing the region-style casing.
+   *
+   * <p>Underscores in the suffix are read as hyphens on both sides too, so {@code nl_NL} and
+   * {@code nl-NL} are one key rather than two.
+   *
+   * <p>Only the locale suffix is loosened this way; the prefix (which contains the email type,
+   * e.g. the camel-cased {@code executeActions}) still matches exactly. Blank values are treated
+   * as absent, so an attribute cleared to "" falls through to the next tier rather than winning
+   * it.
+   *
+   * @return the configured value, or {@code null} if no key matches or the value is blank
+   */
+  private String localizedAttribute(String prefix, String locale) {
+    String exact = realm.getAttribute(prefix + "." + locale);
+    if (exact != null && !exact.isBlank()) return exact;
+
+    Map<String, String> attributes = realm.getAttributes();
+    if (attributes == null) return null;
+
+    int suffixStart = prefix.length() + 1;
+    for (Map.Entry<String, String> entry : attributes.entrySet()) {
+      String key = entry.getKey();
+      if (key.length() > suffixStart
+          && key.startsWith(prefix)
+          && key.charAt(prefix.length()) == '.'
+          && key.substring(suffixStart).replace('_', '-').equalsIgnoreCase(locale)
+          && entry.getValue() != null
+          && !entry.getValue().isBlank()) {
+        return entry.getValue();
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The locales eligible to select a template, most specific first: the recipient's own stored
+   * locale, then the realm's default.
+   *
+   * <p>Each of those two contributes its language subtag as a further candidate, immediately after
+   * itself: a recipient stored as {@code nl-NL} tries {@code template.<name>.nl-NL} and then
+   * {@code template.<name>.nl}. Region-qualified locales reach Keycloak routinely (an IdP
+   * attribute mapper writing {@code nl_NL}, a browser negotiating {@code en-GB}), while operators
+   * configure one template per <em>language</em> - without this, such a recipient would skip a
+   * perfectly good {@code .nl} template and land on the base one.
+   *
+   * <p>The recipient's own language subtag is tried before the realm default, not after it:
+   * falling back within the recipient's own locale is still more specific than giving up on them
+   * entirely. So a {@code nl-NL} recipient in an {@code en}-default realm with {@code .nl} and
+   * {@code .en} templates gets Dutch.
+   */
   private List<String> candidateLocales() {
     List<String> locales = new ArrayList<>();
-    if (user != null) {
-      String userLocale = normalizeLocale(user.getFirstAttribute(UserModel.LOCALE));
-      if (userLocale != null) locales.add(userLocale);
-    }
-    if (realm != null) {
-      String realmDefault = normalizeLocale(realm.getDefaultLocale());
-      if (realmDefault != null && !locales.contains(realmDefault)) locales.add(realmDefault);
-    }
+    if (user != null) addWithLanguageFallback(locales, user.getFirstAttribute(UserModel.LOCALE));
+    if (realm != null) addWithLanguageFallback(locales, realm.getDefaultLocale());
     return locales;
+  }
+
+  /** Appends {@code raw} and then its language subtag, skipping blanks and anything already there. */
+  private static void addWithLanguageFallback(List<String> locales, String raw) {
+    String locale = normalizeLocale(raw);
+    if (locale == null) return;
+    if (!locales.contains(locale)) locales.add(locale);
+
+    int separator = locale.indexOf('-');
+    if (separator <= 0) return;
+    String language = locale.substring(0, separator);
+    if (!locales.contains(language)) locales.add(language);
   }
 
   private static String normalizeLocale(String locale) {
     if (locale == null || locale.isBlank()) return null;
-    return locale.trim().toLowerCase(java.util.Locale.ROOT);
+    // Underscores as well as case: a locale stored Java-style (nl_NL, as an IdP attribute mapper
+    // might write it) has to resolve the same as the BCP-47 nl-NL. Left as-is it matches no key
+    // at all, and java.util.Locale.forLanguageTag turns it into ROOT further down the line.
+    return locale.trim().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
   }
 
   /**
