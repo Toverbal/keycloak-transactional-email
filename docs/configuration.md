@@ -11,6 +11,7 @@ All configuration is stored as realm attributes. There are two ways to manage th
 | `_providerConfig.ext-email-template.provider`                 | Active provider ID (`sendgrid`, `brevo`, `postmark`, `mailtrap`, `mailgun`, `customerio`, `resend`, `awsses`). Empty or absent = disabled. |
 | `_providerConfig.ext-email-template.template.<name>`          | Provider template ID for a given email type (e.g. `template.password-reset`).                                                              |
 | `_providerConfig.ext-email-template.event-date-format`        | Format for `eventDateFormatted` on event-notification emails (see [Event date formatting](#event-date-formatting)). Unset = locale-aware default. |
+| `_providerConfig.ext-email-template.smtp.fromDisplayName` (optionally suffixed `.<locale>`, `.<name>`, or `.<name>.<locale>`) | Sender display name: global / global-per-locale / per-template / per-template-per-locale (see [Locale-specific sender identity](#locale-specific-sender-identity)). Unset = realm's SMTP "From display name" for every email. |
 | `_providerConfig.ext-email-template.sendgrid.api-key`         | SendGrid API key                                                                                                                           |
 | `_providerConfig.ext-email-template.sendgrid.api-url`         | SendGrid API URL override (default: `https://api.sendgrid.com/v3/mail/send`)                                                               |
 | `_providerConfig.ext-email-template.brevo.api-key`            | Brevo API key                                                                                                                              |
@@ -76,7 +77,7 @@ _providerConfig.ext-email-template.template.password-reset.fr = d-fr-template-id
 
 ### One locale per email
 
-Each email resolves to a single **effective locale**, and every locale-dependent value this extension resolves is rendered in it: the template body, `eventDateFormatted` and `requiredActionsText`. A tier only wins if a template is actually configured for it, so the tier that picks the body also fixes the language of what gets injected into it - a French body can never arrive with German dates in it.
+Each email resolves to a single **effective locale**, and every locale-dependent value this extension resolves is rendered in it: the template body, the sender display name, `eventDateFormatted` and `requiredActionsText`. A tier only wins if a template is actually configured for it, so the tier that picks the body also fixes the language of what gets injected into it - a French body can never arrive with German dates in it.
 
 One exception, inherited from Keycloak rather than introduced here: `linkExpirationFormatted` is built in English (`2 hours`) whatever the effective locale is. Use `linkExpiration`, the raw number of minutes, if you want to phrase that yourself in the template.
 
@@ -100,6 +101,35 @@ A locale whose template isn't configured is skipped entirely - it can't win the 
 Locale matching is case-insensitive (`nl` and `NL` are equivalent), and underscores are read as hyphens (`nl_NL` and `nl-NL` are the same key), on both the stored locale and the configured attribute key.
 
 This is intentionally **not** resolved via Keycloak's `LocaleSelectorProvider` (used for login-page/theme locale selection), because that also factors in the *current HTTP request's* cookie, `Accept-Language` header, and active authentication session. For sends triggered by the recipient's own browser (e.g. self-service forgot-password) that happens to line up with the recipient, but for admin-triggered sends (e.g. "Send verification email" in the Admin Console, or the `execute-actions-email` admin REST endpoint) it would reflect the *admin's* locale, not the recipient's - the opposite of what per-recipient routing needs. Reading the recipient's own stored attribute directly stays correct regardless of who or what triggered the send.
+
+---
+
+## Locale-specific sender identity
+
+Keycloak's realm-wide SMTP setting (**Realm Settings → Email → From display name**) is a single fixed value with no notion of locale or email type, so even with per-locale templates every email a realm sends shows the same sender name. These optional attributes override it, most specific first:
+
+```
+_providerConfig.ext-email-template.smtp.fromDisplayName.<name>.<locale>   # this type + this locale
+_providerConfig.ext-email-template.smtp.fromDisplayName.<name>            # this type, any locale
+_providerConfig.ext-email-template.smtp.fromDisplayName.<locale>          # any type, this locale
+_providerConfig.ext-email-template.smtp.fromDisplayName                   # any type, any locale
+```
+
+Anything none of them match falls back to the realm's own "From display name", so a realm with none of these set behaves exactly as before.
+
+The unsuffixed key differs from the realm's SMTP setting in scope, not in effect: it renames the sender only on emails this extension routes to a provider, leaving the SMTP value in place for the types that still fall back to FreeMarker.
+
+```
+_providerConfig.ext-email-template.smtp.fromDisplayName.nl = Acme B.V.
+_providerConfig.ext-email-template.smtp.fromDisplayName.en = Acme Inc.
+_providerConfig.ext-email-template.smtp.fromDisplayName.org-invite = Acme Invitations
+```
+
+Here every email type uses the sender name matching the locale, except `org-invite`, which uses its own in any language: the per-template tier wins over the global per-locale one for the type it names, and affects no other type.
+
+`<name>` is the same email-type name used in [template routing](#template-names). `<locale>` is the email's [effective locale](#one-locale-per-email) - the locale of the template that was selected, not a separate lookup of the recipient's own. A send that fell through to the locale-less template therefore looks for `smtp.fromDisplayName.en`, not `.nl`, even for a Dutch recipient; configure that language's template to change that.
+
+The sender **address** has no equivalent override - it always comes from the realm's own SMTP "From" setting, since an address is tied to a verified sending domain rather than to a language.
 
 ---
 

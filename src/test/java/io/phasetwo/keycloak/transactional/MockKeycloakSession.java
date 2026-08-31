@@ -58,6 +58,10 @@ class MockKeycloakSession {
     this.realmDefaultLocale = locale;
   }
 
+  void setSmtpConfig(String key, String value) {
+    smtpConfig.put(key, value);
+  }
+
   void setUserAttribute(String key, String value) {
     userAttributes.put(key, value);
   }

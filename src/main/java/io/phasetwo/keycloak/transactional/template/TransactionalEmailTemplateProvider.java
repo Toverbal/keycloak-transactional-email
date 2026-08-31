@@ -40,13 +40,27 @@ import org.keycloak.theme.Theme;
  *   <li>{@code _providerConfig.ext-email-template.template.<name>.<locale>} — an optional
  *       locale-specific override, tried before the locale-less key above (see {@link
  *       #resolveTemplate(String)})
+ *   <li>{@code _providerConfig.ext-email-template.smtp.fromDisplayName} — an optional sender
+ *       display name for every email this extension routes (see {@link #resolveFromDisplayName})
+ *   <li>{@code _providerConfig.ext-email-template.smtp.fromDisplayName.<locale>} — the same, but
+ *       only for emails in this locale, applied across every email type
+ *   <li>{@code _providerConfig.ext-email-template.smtp.fromDisplayName.<name>} — an optional
+ *       sender display name for one specific email type, regardless of locale
+ *   <li>{@code _providerConfig.ext-email-template.smtp.fromDisplayName.<name>.<locale>} — the most
+ *       specific override: this email type, this locale. Tried before all of the above, which
+ *       are in turn tried before the realm's own SMTP "From display name" setting
  * </ul>
  *
  * <p>Every email is rendered in a single effective locale, settled once by {@link
  * #resolveTemplate(String)} and carried by {@link ResolvedTemplate}: the tier that selects the
- * template body also fixes the locale used for {@code eventDateFormatted} and {@code
- * requiredActionsText}. Resolving those independently of the routing decision would allow, say,
- * a French template body to be filled in with German dates.
+ * template body also fixes the locale used for the sender display name, {@code eventDateFormatted}
+ * and {@code requiredActionsText}. Resolving those independently of the routing decision would
+ * allow, say, a French template body to be filled in with German dates.
+ *
+ * <p>The sender address itself (as opposed to its display name) is deliberately not overridable
+ * this way - it always comes from the realm's own SMTP "From" setting. Unlike the display name,
+ * an address is tied to a verified sending domain, so realistically it doesn't vary by locale or
+ * email type the way a brand name does.
  *
  * <p>If no provider is configured, or no template mapping exists for the current email type, the
  * call falls back to FreeMarker + SMTP.
@@ -58,6 +72,10 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
   public static final String PROVIDER_KEY = CONFIG_PREFIX + ".provider";
   public static final String TEMPLATE_KEY_PREFIX = CONFIG_PREFIX + ".template.";
   public static final String EVENT_DATE_FORMAT_KEY = CONFIG_PREFIX + ".event-date-format";
+  public static final String SMTP_FROM_DISPLAY_NAME_KEY =
+      CONFIG_PREFIX + ".smtp.fromDisplayName";
+  public static final String SMTP_FROM_DISPLAY_NAME_KEY_PREFIX =
+      SMTP_FROM_DISPLAY_NAME_KEY + ".";
 
   /**
    * Named presets for {@link #EVENT_DATE_FORMAT_KEY}, as {@link java.time.format.DateTimeFormatter}
@@ -83,7 +101,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       vars.put("link", link);
       vars.put("linkExpiration", expirationInMinutes);
       vars.put("linkExpirationFormatted", formatExpiration(expirationInMinutes));
-      sendViaProvider(resolved.get(), vars, null);
+      sendViaProvider("password-reset", resolved.get(), vars, null);
     } else {
       super.sendPasswordReset(link, expirationInMinutes);
     }
@@ -97,7 +115,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       vars.put("link", link);
       vars.put("linkExpiration", expirationInMinutes);
       vars.put("linkExpirationFormatted", formatExpiration(expirationInMinutes));
-      sendViaProvider(resolved.get(), vars, null);
+      sendViaProvider("email-verification", resolved.get(), vars, null);
     } else {
       super.sendVerifyEmail(link, expirationInMinutes);
     }
@@ -112,7 +130,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       vars.put("linkExpiration", expirationInMinutes);
       vars.put("linkExpirationFormatted", formatExpiration(expirationInMinutes));
       vars.put("requiredActionsText", buildRequiredActionsText(resolved.get().locale()));
-      sendViaProvider(resolved.get(), vars, null);
+      sendViaProvider("executeActions", resolved.get(), vars, null);
     } else {
       super.sendExecuteActions(link, expirationInMinutes);
     }
@@ -129,7 +147,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       vars.put("linkExpirationFormatted", formatExpiration(expirationInMinutes));
       vars.put("newEmail", newEmail);
       // Send to the new (unconfirmed) address, matching FreeMarker behaviour
-      sendViaProvider(resolved.get(), vars, newEmail);
+      sendViaProvider("email-update-confirmation", resolved.get(), vars, newEmail);
     } else {
       super.sendEmailUpdateConfirmation(link, expirationInMinutes, newEmail);
     }
@@ -156,7 +174,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
         vars.put("identityProviderAlias", ctx.getIdpConfig().getAlias());
       }
 
-      sendViaProvider(resolved.get(), vars, null);
+      sendViaProvider("identity-provider-link", resolved.get(), vars, null);
     } else {
       super.sendConfirmIdentityBrokerLink(link, expirationInMinutes);
     }
@@ -174,7 +192,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       vars.put("organizationName", organization.getName());
       if (user.getFirstName() != null) vars.put("firstName", user.getFirstName());
       if (user.getLastName() != null) vars.put("lastName", user.getLastName());
-      sendViaProvider(resolved.get(), vars, null);
+      sendViaProvider("org-invite", resolved.get(), vars, null);
     } else {
       super.sendOrgInviteEmail(organization, link, expirationInMinutes);
     }
@@ -193,7 +211,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
         vars.put("credentialType", event.getDetails().get("credential_type"));
         vars.putAll(event.getDetails());
       }
-      sendViaProvider(resolved.get(), vars, null);
+      sendViaProvider(ftlName, resolved.get(), vars, null);
     } else {
       super.sendEvent(event);
     }
@@ -218,7 +236,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
           }
         });
       }
-      sendViaProvider(resolved.get(), vars, null);
+      sendViaProvider(templateName, resolved.get(), vars, null);
     } else {
       super.send(subjectKey, subjectAttributes, template, bodyAttributes);
     }
@@ -233,10 +251,10 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
    * the locale that same email's variables are rendered in.
    *
    * <p>These are deliberately one value rather than two independent lookups. The locale here is
-   * whichever tier of {@link #resolveTemplate(String)} actually won - so the body, {@code
-   * eventDateFormatted} and {@code requiredActionsText} are all rendered in the language of the
-   * template that was actually selected. Resolving them separately would let a French template
-   * body arrive with German dates in it.
+   * whichever tier of {@link #resolveTemplate(String)} actually won - so the body, the sender
+   * display name, {@code eventDateFormatted} and {@code requiredActionsText} are all rendered in
+   * the language of the template that was actually selected. Resolving them separately would let
+   * a French template body arrive with German dates in it.
    */
   private record ResolvedTemplate(String templateId, Locale locale) {}
 
@@ -302,6 +320,73 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
       return Optional.empty();
     }
     return Optional.of(new ResolvedTemplate(templateId, BASE_TEMPLATE_LOCALE));
+  }
+
+  /**
+   * Resolves the sender display name, trying four configured tiers from most to least specific,
+   * before the realm's own setting:
+   *
+   * <ol>
+   *   <li>{@code smtp.fromDisplayName.<templateName>.<locale>} - this email type, this locale
+   *   <li>{@code smtp.fromDisplayName.<templateName>} - this email type, any locale (a deliberate
+   *       override that intentionally ignores locale, e.g. a fixed sender name for {@code
+   *       org-invite} regardless of language)
+   *   <li>{@code smtp.fromDisplayName.<locale>} - any email type, this locale (the "global" brand
+   *       override, e.g. Acme B.V. for nl vs Acme Inc. for everything else)
+   *   <li>{@code smtp.fromDisplayName} - any email type, any locale: one name for everything this
+   *       extension sends. Distinct from the realm setting below in that it applies only to
+   *       provider-routed emails, leaving the SMTP value in place for the types that still fall
+   *       back to FreeMarker. It is also the key an operator is most likely to reach for first,
+   *       having seen the three suffixed forms, so it resolves rather than silently doing nothing.
+   *   <li>the realm's own {@link org.keycloak.models.RealmModel#getSmtpConfig()} "fromDisplayName"
+   *       value - unchanged Keycloak behavior, used when none of the above are configured
+   * </ol>
+   *
+   * <p>{@code locale} is the email's effective locale from {@link ResolvedTemplate}, not a fresh
+   * lookup of the recipient's own locale - the sender name is part of the same rendered email as
+   * the body, so a send that fell through to the base English template uses the English sender
+   * name rather than the recipient's, for the same reason the dates in it are English.
+   *
+   * <p>The sender address itself deliberately has no equivalent override - see the class-level
+   * docs.
+   *
+   * @param templateName the Keycloak email type being sent (e.g. {@code "password-reset"}), for
+   *     the per-template tiers
+   * @param locale the email's effective locale, for the per-locale tiers
+   * @param smtpConfig the realm's SMTP config map, used as the final fallback
+   */
+  private String resolveFromDisplayName(
+      String templateName, Locale locale, Map<String, String> smtpConfig) {
+    String localeTag = locale.toLanguageTag();
+
+    String perTemplatePerLocale =
+        localizedAttribute(SMTP_FROM_DISPLAY_NAME_KEY_PREFIX + templateName, localeTag);
+    if (perTemplatePerLocale != null) {
+      log.debugf(
+          "Using per-template locale '%s' override for from display name (%s)",
+          localeTag, templateName);
+      return perTemplatePerLocale;
+    }
+
+    String perTemplate = realm.getAttribute(SMTP_FROM_DISPLAY_NAME_KEY_PREFIX + templateName);
+    if (perTemplate != null && !perTemplate.isBlank()) {
+      log.debugf("Using per-template override for from display name (%s)", templateName);
+      return perTemplate;
+    }
+
+    String perLocale = localizedAttribute(SMTP_FROM_DISPLAY_NAME_KEY, localeTag);
+    if (perLocale != null) {
+      log.debugf("Using locale '%s' override for from display name", localeTag);
+      return perLocale;
+    }
+
+    String global = realm.getAttribute(SMTP_FROM_DISPLAY_NAME_KEY);
+    if (global != null && !global.isBlank()) {
+      log.debug("Using global override for from display name");
+      return global;
+    }
+
+    return smtpConfig.getOrDefault("fromDisplayName", "");
   }
 
   /**
@@ -541,11 +626,18 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
    * Resolves the active provider and dispatches the send call. Falls back to FreeMarker if the
    * provider is not available at runtime (e.g. factory JAR not installed).
    *
+   * @param templateName the Keycloak email type being sent (e.g. {@code "password-reset"}) - used
+   *     only to resolve the per-template sender-identity tiers in {@link
+   *     #resolveFromDisplayName}, distinct from the provider-specific template identifier carried
+   *     by {@code resolved}
    * @param resolved the template ID and effective locale settled on by {@link
    *     #resolveTemplate(String)}
    */
   private void sendViaProvider(
-      ResolvedTemplate resolved, Map<String, Object> vars, String overrideToEmail)
+      String templateName,
+      ResolvedTemplate resolved,
+      Map<String, Object> vars,
+      String overrideToEmail)
       throws EmailException {
     TransactionalEmailProvider provider = resolveProvider();
     if (provider == null) {
@@ -563,7 +655,7 @@ public class TransactionalEmailTemplateProvider extends FreeMarkerEmailTemplateP
 
     Map<String, String> smtpConfig = realm.getSmtpConfig();
     String fromEmail = smtpConfig.getOrDefault("from", "");
-    String fromName = smtpConfig.getOrDefault("fromDisplayName", "");
+    String fromName = resolveFromDisplayName(templateName, resolved.locale(), smtpConfig);
 
     log.infof(
         "Sending email via transactional provider '%s' (templateId=%s, to=%s)",

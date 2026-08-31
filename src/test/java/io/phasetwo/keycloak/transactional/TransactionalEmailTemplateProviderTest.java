@@ -22,11 +22,15 @@ class TransactionalEmailTemplateProviderTest {
 
   private static final String PROVIDER_KEY = "_providerConfig.ext-email-template.provider";
   private static final String TEMPLATE_PREFIX = "_providerConfig.ext-email-template.template.";
+  private static final String FROM_NAME_PREFIX =
+      "_providerConfig.ext-email-template.smtp.fromDisplayName.";
 
   /** Records the templateId and vars passed to send(), so tests can assert on routing decisions. */
   private static class RecordingProvider implements TransactionalEmailProvider {
     final AtomicReference<String> lastTemplateId = new AtomicReference<>();
     final AtomicReference<Map<String, Object>> lastVars = new AtomicReference<>();
+    final AtomicReference<String> lastFromEmail = new AtomicReference<>();
+    final AtomicReference<String> lastFromName = new AtomicReference<>();
 
     @Override
     public void send(
@@ -38,6 +42,8 @@ class TransactionalEmailTemplateProviderTest {
         String fromName) {
       lastTemplateId.set(templateId);
       lastVars.set(templateData);
+      lastFromEmail.set(fromEmail);
+      lastFromName.set(fromName);
     }
 
     @Override
@@ -433,6 +439,172 @@ class TransactionalEmailTemplateProviderTest {
   }
 
   @Test
+  void usesLocaleSpecificFromDisplayName_whenMappingExistsAndUserLocaleMatches() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setSmtpConfig("fromDisplayName", "Keycloak");
+    mock.setAttribute(FROM_NAME_PREFIX + "nl", "Acme B.V.");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Acme B.V."));
+  }
+
+  @Test
+  void fallsBackToSmtpConfigFromDisplayName_whenNoLocaleMappingExists() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setSmtpConfig("fromDisplayName", "Keycloak");
+    // No smtp.fromDisplayName.de mapping configured.
+    mock.setUserAttribute(UserModel.LOCALE, "de");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Keycloak"));
+  }
+
+  @Test
+  void userLocaleTakesPriorityOverRealmDefaultLocale_forFromDisplayName() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.fr", "fr-template");
+    mock.setSmtpConfig("fromDisplayName", "Keycloak");
+    mock.setAttribute(FROM_NAME_PREFIX + "nl", "Acme B.V.");
+    mock.setAttribute(FROM_NAME_PREFIX + "fr", "Acme France");
+    mock.setRealmDefaultLocale("fr");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Acme B.V."));
+  }
+
+  @Test
+  void fromDisplayNameLocaleLookupIsCaseInsensitive() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    // Uppercase on both sides that matter: the stored user locale and the configured key suffix.
+    mock.setAttribute(FROM_NAME_PREFIX + "NL", "Acme B.V.");
+    mock.setUserAttribute(UserModel.LOCALE, "NL");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Acme B.V."));
+  }
+
+  @Test
+  void fromEmail_alwaysUsesSmtpConfig_regardlessOfLocaleOrTemplateAttributes() throws Exception {
+    // The sender address has no override mechanism at all, unlike fromDisplayName - it always
+    // comes from the realm's own SMTP config, since it's tied to a verified sending domain and
+    // doesn't need to vary the way a brand name does. Setting an unrelated fromDisplayName
+    // attribute here proves the two fields are resolved independently.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setSmtpConfig("from", "noreply@example.com");
+    mock.setAttribute(FROM_NAME_PREFIX + "nl", "Acme B.V.");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromEmail.get(), is("noreply@example.com"));
+  }
+
+  @Test
+  void fromDisplayName_perTemplateOverride_appliesRegardlessOfLocale() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setSmtpConfig("fromDisplayName", "Keycloak");
+    mock.setAttribute(FROM_NAME_PREFIX + "password-reset", "Acme Security Team");
+    // No global smtp.fromDisplayName.de mapping - proves this isn't falling through to tier 3.
+    mock.setUserAttribute(UserModel.LOCALE, "de");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Acme Security Team"));
+  }
+
+  @Test
+  void fromDisplayName_perTemplateOverride_winsOverGlobalPerLocale() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    // The nl template matters: without it the effective locale is English, the tier-3 nl mapping
+    // is never eligible, and this test would pass whichever way round the two tiers are tried.
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setAttribute(FROM_NAME_PREFIX + "nl", "Acme B.V."); // global, tier 3
+    mock.setAttribute(FROM_NAME_PREFIX + "password-reset", "Acme Security Team"); // tier 2
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    // The per-template override is a deliberate choice by whoever configured it, so it wins
+    // even though a global per-locale mapping also matches.
+    assertThat(recordingProvider.lastFromName.get(), is("Acme Security Team"));
+  }
+
+  @Test
+  void fromDisplayName_perTemplatePerLocaleOverride_winsOverPerTemplateOnly() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setAttribute(FROM_NAME_PREFIX + "password-reset", "Acme Security Team"); // tier 2
+    mock.setAttribute(FROM_NAME_PREFIX + "password-reset.nl", "Acme Beveiligingsteam"); // tier 1
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Acme Beveiligingsteam"));
+  }
+
+  @Test
+  void fromDisplayName_globalOverride_appliesToEveryTypeAndLocale() throws Exception {
+    // The unsuffixed key: the form an operator is most likely to try first, having seen the three
+    // suffixed ones. It overrides the realm's SMTP value for provider-routed emails.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setSmtpConfig("fromDisplayName", "Keycloak");
+    mock.setAttribute("_providerConfig.ext-email-template.smtp.fromDisplayName", "Acme");
+    mock.setUserAttribute(UserModel.LOCALE, "de");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Acme"));
+  }
+
+  @Test
+  void fromDisplayName_globalPerLocaleOverride_winsOverUnsuffixedGlobal() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setAttribute("_providerConfig.ext-email-template.smtp.fromDisplayName", "Acme"); // tier 4
+    mock.setAttribute(FROM_NAME_PREFIX + "nl", "Acme B.V."); // tier 3
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Acme B.V."));
+  }
+
+  @Test
+  void fromDisplayName_perTemplateOverride_doesNotLeakToOtherEmailTypes() throws Exception {
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset.nl", "nl-template");
+    mock.setAttribute(FROM_NAME_PREFIX + "org-invite", "Acme Invitations");
+    mock.setAttribute(FROM_NAME_PREFIX + "nl", "Acme B.V."); // global fallback
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    // password-reset has no override of its own, so it falls through to the global mapping -
+    // the org-invite-specific override must not apply here.
+    assertThat(recordingProvider.lastFromName.get(), is("Acme B.V."));
+  }
+
+  @Test
   void formattingLocaleFollowsTheSelectedTemplate_notTheUsersOwnLocale() throws Exception {
     // The case that motivated resolving template and locale as one decision: the recipient's own
     // locale (de) has no template, so the realm default (fr) tier wins the routing. The variables
@@ -472,5 +644,20 @@ class TransactionalEmailTemplateProviderTest {
     templateProvider.sendExecuteActions("https://example.com/actions", 60);
 
     assertThat(recordingProvider.lastVars.get().get("requiredActionsText"), is("Update password"));
+  }
+
+  @Test
+  void fromDisplayNameFollowsTheSelectedTemplateLocale_notTheUsersOwnLocale() throws Exception {
+    // Same single-locale rule for the sender name: only the base template exists, so the email is
+    // English throughout and the Dutch sender override is not eligible, even for a Dutch user.
+    TransactionalEmailTemplateProvider templateProvider = buildProvider();
+    mock.setAttribute(TEMPLATE_PREFIX + "password-reset", "base-template");
+    mock.setSmtpConfig("fromDisplayName", "Keycloak");
+    mock.setAttribute(FROM_NAME_PREFIX + "nl", "Acme B.V.");
+    mock.setUserAttribute(UserModel.LOCALE, "nl");
+
+    templateProvider.sendPasswordReset("https://example.com/reset", 60);
+
+    assertThat(recordingProvider.lastFromName.get(), is("Keycloak"));
   }
 }

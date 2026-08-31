@@ -70,7 +70,7 @@ _providerConfig.ext-email-template.template.<name>.<locale>
 
     ONE LOCALE PER EMAIL. resolveTemplate() returns a ResolvedTemplate(templateId, locale) pair:
     the tier that selects the template also fixes the locale everything else in that email is
-    rendered in (eventDateFormatted, requiredActionsText). Tiers, each only
+    rendered in (sender display name, eventDateFormatted, requiredActionsText). Tiers, each only
     eligible if a template is actually configured for it:
       1. template.<name>.<userLocale>        → recipient's own UserModel.LOCALE (set e.g. by the
                                                account console's language switcher)
@@ -98,6 +98,30 @@ _providerConfig.ext-email-template.template.<name>.<locale>
     → deliberately NOT resolved via LocaleSelectorProvider (which also considers the CURRENT
       request's cookie/Accept-Language/auth session) - for admin-triggered sends (e.g. "Send
       verification email" in the admin console) that reflects the ADMIN, not the recipient
+
+_providerConfig.ext-email-template.smtp.fromDisplayName
+_providerConfig.ext-email-template.smtp.fromDisplayName.<locale>
+_providerConfig.ext-email-template.smtp.fromDisplayName.<name>
+_providerConfig.ext-email-template.smtp.fromDisplayName.<name>.<locale>
+    → optional sender display name overrides, resolved in resolveFromDisplayName()
+    → e.g. ...fromDisplayName.nl = "Acme B.V.", ...fromDisplayName.org-invite = "Acme Invitations"
+
+    Resolution order (most to least specific):
+      1. smtp.fromDisplayName.<name>.<locale>
+      2. smtp.fromDisplayName.<name>            (ignores locale - a deliberate per-type override)
+      3. smtp.fromDisplayName.<locale>          (the "global brand per locale" case)
+      4. smtp.fromDisplayName                   (unsuffixed - one name for everything THIS
+                                                 extension routes; the realm's SMTP value still
+                                                 applies to types that fall back to FreeMarker)
+      5. realm's own SMTP "From display name" (Realm Settings → Email) - Keycloak's default,
+         unchanged if none of the above are set
+    <locale> here is the email's EFFECTIVE locale from ResolvedTemplate - the locale of the
+    template that actually won, not a fresh lookup of the recipient's own. A send that fell
+    through to the locale-less template therefore looks for fromDisplayName.en, not
+    fromDisplayName.nl, even for a Dutch recipient.
+
+    The sender ADDRESS has no equivalent override and always comes from the realm's own SMTP
+    "from" setting - an address is tied to a verified sending domain, not to a language.
 
 _providerConfig.ext-email-template.sendgrid.api-key
     → SendGrid API key (sensitive; masked as "**secret**" in GET responses)
